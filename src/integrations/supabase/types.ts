@@ -29,6 +29,7 @@ export type Database = {
           reporting_manager_id: string | null
           status: string | null
           temporary_password: string | null
+          tenant_id: string | null
           updated_at: string | null
           user_id: string
           work_location: string | null
@@ -47,6 +48,7 @@ export type Database = {
           reporting_manager_id?: string | null
           status?: string | null
           temporary_password?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
           user_id: string
           work_location?: string | null
@@ -65,6 +67,7 @@ export type Database = {
           reporting_manager_id?: string | null
           status?: string | null
           temporary_password?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
           user_id?: string
           work_location?: string | null
@@ -75,6 +78,13 @@ export type Database = {
             columns: ["reporting_manager_id"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employees_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
@@ -278,6 +288,39 @@ export type Database = {
           },
         ]
       }
+      organizations: {
+        Row: {
+          company_size: string | null
+          created_at: string | null
+          domain: string
+          id: string
+          industry: string | null
+          name: string
+          timezone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          company_size?: string | null
+          created_at?: string | null
+          domain: string
+          id?: string
+          industry?: string | null
+          name: string
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          company_size?: string | null
+          created_at?: string | null
+          domain?: string
+          id?: string
+          industry?: string | null
+          name?: string
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -290,6 +333,7 @@ export type Database = {
           security_answer_2: string | null
           security_question_1: string | null
           security_question_2: string | null
+          tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -303,6 +347,7 @@ export type Database = {
           security_answer_2?: string | null
           security_question_1?: string | null
           security_question_2?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -316,9 +361,18 @@ export type Database = {
           security_answer_2?: string | null
           security_question_1?: string | null
           security_question_2?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       timesheet_entries: {
         Row: {
@@ -420,21 +474,32 @@ export type Database = {
           created_at: string | null
           id: string
           role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string | null
           user_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
           role: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string | null
           user_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workflows: {
         Row: {
@@ -482,6 +547,7 @@ export type Database = {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      get_user_tenant_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
