@@ -72,6 +72,24 @@ Deno.serve(async (req) => {
 
     console.log('User has required role:', roleData.role);
 
+    // Get the tenant_id from the requesting user's profile
+    const { data: profileData, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profileData?.tenant_id) {
+      console.error('Error getting tenant_id:', profileError);
+      return new Response(
+        JSON.stringify({ error: 'Could not determine organization' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tenantId = profileData.tenant_id;
+    console.log('Creating employee for tenant:', tenantId);
+
     const requestData: CreateEmployeeRequest = await req.json();
     console.log('Creating employee with email:', requestData.email);
 
@@ -87,6 +105,7 @@ Deno.serve(async (req) => {
         first_name: requestData.firstName,
         last_name: requestData.lastName,
         needs_password_setup: true,
+        tenant_id: tenantId,
       },
     });
 
@@ -110,6 +129,7 @@ Deno.serve(async (req) => {
         reporting_manager_id: requestData.reportingManagerId || null,
         must_change_password: true,
         onboarding_status: 'not_started',
+        tenant_id: tenantId,
       });
 
     if (employeeError) {
@@ -125,6 +145,7 @@ Deno.serve(async (req) => {
       .insert({
         user_id: authData.user.id,
         role: requestData.role,
+        tenant_id: tenantId,
       });
 
     if (roleError) {

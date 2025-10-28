@@ -7,11 +7,19 @@ export type UserRole = 'employee' | 'manager' | 'hr' | 'director' | 'ceo';
 
 export type AuthUser = User;
 
+export interface OrganizationData {
+  orgName: string;
+  domain: string;
+  companySize?: string;
+  industry?: string;
+  timezone?: string;
+}
+
 interface AuthContextType {
   user: AuthUser | null;
   session: Session | null;
   login: (email: string, password: string) => Promise<{ error: any }>;
-  signup: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: any }>;
+  signup: (email: string, password: string, firstName: string, lastName: string, orgData?: OrganizationData) => Promise<{ error: any }>;
   logout: () => Promise<void>;
   isLoading: boolean;
   userRole: UserRole | null;
@@ -100,17 +108,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signup = async (email: string, password: string, firstName: string, lastName: string) => {
+  const signup = async (email: string, password: string, firstName: string, lastName: string, orgData?: OrganizationData) => {
     try {
+      const metadata: any = {
+        first_name: firstName,
+        last_name: lastName,
+      };
+
+      // If organization data is provided, this is a CEO signup creating a new org
+      if (orgData) {
+        metadata.org_name = orgData.orgName;
+        metadata.domain = orgData.domain;
+        metadata.company_size = orgData.companySize;
+        metadata.industry = orgData.industry;
+        metadata.timezone = orgData.timezone;
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-          }
+          data: metadata
         }
       });
 

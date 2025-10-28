@@ -45,7 +45,19 @@ export default function Signup() {
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
       
-      const { error } = await signup(formData.adminEmail, formData.password, firstName, lastName);
+      const { error } = await signup(
+        formData.adminEmail, 
+        formData.password, 
+        firstName, 
+        lastName,
+        {
+          orgName: formData.orgName,
+          domain: formData.domain,
+          companySize: formData.companySize,
+          industry: formData.industry,
+          timezone: formData.timezone
+        }
+      );
       
       if (error) {
         throw error;
