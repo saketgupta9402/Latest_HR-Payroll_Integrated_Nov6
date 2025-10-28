@@ -158,6 +158,7 @@ export type Database = {
           start_date: string
           status: string
           submitted_at: string
+          tenant_id: string | null
           total_days: number
           updated_at: string | null
         }
@@ -174,6 +175,7 @@ export type Database = {
           start_date: string
           status?: string
           submitted_at?: string
+          tenant_id?: string | null
           total_days: number
           updated_at?: string | null
         }
@@ -190,6 +192,7 @@ export type Database = {
           start_date?: string
           status?: string
           submitted_at?: string
+          tenant_id?: string | null
           total_days?: number
           updated_at?: string | null
         }
@@ -215,6 +218,13 @@ export type Database = {
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "leave_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       onboarding_data: {
@@ -236,6 +246,7 @@ export type Database = {
           pan_number: string | null
           postal_code: string | null
           state: string | null
+          tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -256,6 +267,7 @@ export type Database = {
           pan_number?: string | null
           postal_code?: string | null
           state?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -276,6 +288,7 @@ export type Database = {
           pan_number?: string | null
           postal_code?: string | null
           state?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -284,6 +297,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: true
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "onboarding_data_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -380,6 +400,7 @@ export type Database = {
           description: string | null
           hours: number
           id: string
+          tenant_id: string | null
           timesheet_id: string
           work_date: string
         }
@@ -388,6 +409,7 @@ export type Database = {
           description?: string | null
           hours: number
           id?: string
+          tenant_id?: string | null
           timesheet_id: string
           work_date: string
         }
@@ -396,10 +418,18 @@ export type Database = {
           description?: string | null
           hours?: number
           id?: string
+          tenant_id?: string | null
           timesheet_id?: string
           work_date?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "timesheet_entries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "timesheet_entries_timesheet_id_fkey"
             columns: ["timesheet_id"]
@@ -419,6 +449,7 @@ export type Database = {
           reviewed_by: string | null
           status: string
           submitted_at: string
+          tenant_id: string | null
           total_hours: number
           updated_at: string | null
           week_end_date: string
@@ -433,6 +464,7 @@ export type Database = {
           reviewed_by?: string | null
           status?: string
           submitted_at?: string
+          tenant_id?: string | null
           total_hours: number
           updated_at?: string | null
           week_end_date: string
@@ -447,6 +479,7 @@ export type Database = {
           reviewed_by?: string | null
           status?: string
           submitted_at?: string
+          tenant_id?: string | null
           total_hours?: number
           updated_at?: string | null
           week_end_date?: string
@@ -465,6 +498,13 @@ export type Database = {
             columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
