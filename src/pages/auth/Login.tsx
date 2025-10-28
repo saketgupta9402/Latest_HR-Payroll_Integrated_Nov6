@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2 } from "lucide-react";
+import { Building2, UserPlus } from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -56,7 +56,7 @@ export default function Login() {
             <Building2 className="h-7 w-7 text-primary-foreground" />
           </div>
           <div>
-            <CardTitle className="text-2xl">Welcome back</CardTitle>
+            <CardTitle className="text-2xl">Company Login</CardTitle>
             <CardDescription>Sign in to your HR platform account</CardDescription>
           </div>
         </CardHeader>
@@ -92,6 +92,25 @@ export default function Login() {
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Signing in..." : "Sign in"}
+            </Button>
+            <div className="relative w-full">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  New employee?
+                </span>
+              </div>
+            </div>
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="w-full"
+              onClick={() => navigate('/auth/first-time-login')}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              First Time Login
             </Button>
             <div className="text-sm text-center text-muted-foreground">
               Don't have an account?{" "}

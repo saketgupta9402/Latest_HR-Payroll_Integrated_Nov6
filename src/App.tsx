@@ -9,6 +9,7 @@ import { ProtectedRoute, PublicRoute } from "./components/ProtectedRoute";
 // Pages
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
+import FirstTimeLogin from "./pages/auth/FirstTimeLogin";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import EmployeeImport from "./pages/EmployeeImport";
@@ -38,6 +39,7 @@ const App = () => (
             {/* Public routes */}
             <Route path="/auth/login" element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/auth/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+            <Route path="/auth/first-time-login" element={<FirstTimeLogin />} />
             <Route path="/setup-password" element={<SetupPassword />} />
             
             {/* Protected routes */}

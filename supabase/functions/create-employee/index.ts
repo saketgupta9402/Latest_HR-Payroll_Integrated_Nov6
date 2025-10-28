@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     const requestData: CreateEmployeeRequest = await req.json();
     console.log('Creating employee with email:', requestData.email);
 
-    // Generate temporary password that employee won't use directly
+    // Create user account with random password (employee will set their own)
     const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
 
     // Create user account
@@ -108,7 +108,6 @@ Deno.serve(async (req) => {
         work_location: requestData.workLocation,
         join_date: requestData.joinDate,
         reporting_manager_id: requestData.reportingManagerId || null,
-        temporary_password: tempPassword,
         must_change_password: true,
         onboarding_status: 'not_started',
       });
@@ -138,9 +137,8 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        temporaryPassword: tempPassword,
         email: requestData.email,
-        message: 'Employee created successfully. Share the temporary password with them.',
+        message: 'Employee created successfully. They can use "First Time Login" on the login page.',
         userId: authData.user.id
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

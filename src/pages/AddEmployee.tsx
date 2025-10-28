@@ -92,8 +92,8 @@ export default function AddEmployee() {
 
       toast({
         title: "Employee added successfully",
-        description: `Email: ${data.email} | Password: ${data.temporaryPassword} (Save this password!)`,
-        duration: 10000,
+        description: `${data.email} can now use "First Time Login" on the login page`,
+        duration: 5000,
       });
 
       // Refresh employees list before navigating
