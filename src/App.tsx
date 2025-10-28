@@ -17,6 +17,12 @@ import Timesheets from "./pages/Timesheets";
 import Analytics from "./pages/Analytics";
 import NotFound from "./pages/NotFound";
 
+import AddEmployee from "./pages/AddEmployee";
+import LeavePolicies from "./pages/LeavePolicies";
+import Onboarding from "./pages/Onboarding";
+import ChangePassword from "./pages/ChangePassword";
+import OrgChart from "./pages/OrgChart";
+
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -62,12 +68,17 @@ const App = () => (
             {/* Protected routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
+            <Route path="/employees/new" element={<ProtectedRoute><AddEmployee /></ProtectedRoute>} />
             <Route path="/employees/import" element={<ProtectedRoute><EmployeeImport /></ProtectedRoute>} />
             <Route path="/workflows" element={<ProtectedRoute><Workflows /></ProtectedRoute>} />
             <Route path="/workflows/new" element={<ProtectedRoute><WorkflowEditor /></ProtectedRoute>} />
             <Route path="/workflows/:id/edit" element={<ProtectedRoute><WorkflowEditor /></ProtectedRoute>} />
             <Route path="/timesheets" element={<ProtectedRoute><Timesheets /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+            <Route path="/policies" element={<ProtectedRoute><LeavePolicies /></ProtectedRoute>} />
+            <Route path="/org-chart" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
+            <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+            <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
             
             {/* Redirects */}
             <Route path="/" element={<Navigate to="/dashboard" />} />

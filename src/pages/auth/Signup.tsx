@@ -41,16 +41,25 @@ export default function Signup() {
     setIsLoading(true);
 
     try {
-      await signup(formData);
+      const nameParts = formData.adminName.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      const { error } = await signup(formData.adminEmail, formData.password, firstName, lastName);
+      
+      if (error) {
+        throw error;
+      }
+      
       toast({
         title: "Account created!",
         description: "Welcome to your HR platform.",
       });
       navigate("/dashboard");
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Signup failed",
-        description: "Please try again or contact support.",
+        description: error.message || "Please try again or contact support.",
         variant: "destructive",
       });
     } finally {

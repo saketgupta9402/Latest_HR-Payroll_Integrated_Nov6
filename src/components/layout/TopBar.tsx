@@ -14,13 +14,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export function TopBar() {
-  const { user, logout } = useAuth();
+  const { user, userRole, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
     navigate('/auth/login');
   };
+
+  const userName = user?.user_metadata?.first_name 
+    ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
+    : user?.email || 'User';
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -51,8 +55,8 @@ export function TopBar() {
                   <User className="h-4 w-4 text-primary" />
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-medium">{user?.name}</p>
-                  <p className="text-xs text-muted-foreground">{user?.roles[0]}</p>
+                  <p className="text-sm font-medium">{userName}</p>
+                  <p className="text-xs text-muted-foreground">{userRole || 'Loading...'}</p>
                 </div>
               </Button>
             </DropdownMenuTrigger>

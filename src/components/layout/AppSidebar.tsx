@@ -40,8 +40,8 @@ const superAdminItems = [
 ];
 
 export function AppSidebar() {
-  const { user } = useAuth();
-  const isSuperAdmin = user?.roles.includes('superadmin');
+  const { userRole } = useAuth();
+  const isHROrAbove = userRole === 'hr' || userRole === 'director' || userRole === 'ceo';
 
   return (
     <Sidebar>
@@ -80,31 +80,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        {isSuperAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Admin</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {superAdminItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <NavLink 
-                        to={item.url}
-                        className={({ isActive }) => 
-                          isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""
-                        }
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
 
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
