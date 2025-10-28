@@ -4,19 +4,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, CheckCircle, XCircle, Plus } from "lucide-react";
+import { Calendar, CheckCircle, XCircle, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-interface Timesheet {
+interface LeaveRequest {
   id: string;
-  week_start_date: string;
-  week_end_date: string;
-  total_hours: number;
+  start_date: string;
+  end_date: string;
+  total_days: number;
+  reason: string;
   status: string;
   submitted_at: string;
   reviewed_at: string | null;
@@ -33,11 +36,21 @@ interface Timesheet {
       last_name: string;
     };
   };
+  leave_type: {
+    name: string;
+  } | null;
 }
 
-export default function Timesheets() {
-  const [myTimesheets, setMyTimesheets] = useState<Timesheet[]>([]);
-  const [teamTimesheets, setTeamTimesheets] = useState<Timesheet[]>([]);
+interface LeavePolicy {
+  id: string;
+  name: string;
+  annual_entitlement: number;
+}
+
+export default function LeaveRequests() {
+  const [myRequests, setMyRequests] = useState<LeaveRequest[]>([]);
+  const [teamRequests, setTeamRequests] = useState<LeaveRequest[]>([]);
+  const [policies, setPolicies] = useState<LeavePolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const { user, userRole } = useAuth();
@@ -51,49 +64,59 @@ export default function Timesheets() {
     if (!user) return;
 
     try {
-      // Fetch my timesheets
+      // Fetch leave policies
+      const { data: policiesData } = await supabase
+        .from("leave_policies")
+        .select("id, name, annual_entitlement")
+        .eq("is_active", true);
+
+      if (policiesData) setPolicies(policiesData);
+
+      // Fetch my leave requests
       const { data: myData } = await supabase
-        .from("timesheets")
+        .from("leave_requests")
         .select(`
           *,
-          employee:employees!timesheets_employee_id_fkey(
+          employee:employees!leave_requests_employee_id_fkey(
             profiles!employees_user_id_fkey(first_name, last_name)
           ),
-          reviewer:employees!timesheets_reviewed_by_fkey(
+          reviewer:employees!leave_requests_reviewed_by_fkey(
             profiles!employees_user_id_fkey(first_name, last_name)
-          )
+          ),
+          leave_type:leave_policies(name)
         `)
         .eq("employee.user_id", user.id)
         .order("submitted_at", { ascending: false });
 
-      if (myData) setMyTimesheets(myData as any);
+      if (myData) setMyRequests(myData as any);
 
-      // Fetch team timesheets if manager or above
+      // Fetch team requests if manager or above
       if (userRole && ["manager", "hr", "director", "ceo"].includes(userRole)) {
         const { data: teamData } = await supabase
-          .from("timesheets")
+          .from("leave_requests")
           .select(`
             *,
-            employee:employees!timesheets_employee_id_fkey(
+            employee:employees!leave_requests_employee_id_fkey(
               profiles!employees_user_id_fkey(first_name, last_name)
             ),
-            reviewer:employees!timesheets_reviewed_by_fkey(
+            reviewer:employees!leave_requests_reviewed_by_fkey(
               profiles!employees_user_id_fkey(first_name, last_name)
-            )
+            ),
+            leave_type:leave_policies(name)
           `)
           .eq("status", "pending")
           .order("submitted_at", { ascending: false });
 
-        if (teamData) setTeamTimesheets(teamData as any);
+        if (teamData) setTeamRequests(teamData as any);
       }
     } catch (error) {
-      console.error("Error fetching timesheets:", error);
+      console.error("Error fetching leave requests:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApprove = async (timesheetId: string) => {
+  const handleApprove = async (requestId: string) => {
     const { data: employeeData } = await supabase
       .from("employees")
       .select("id")
@@ -101,23 +124,23 @@ export default function Timesheets() {
       .single();
 
     const { error } = await supabase
-      .from("timesheets")
+      .from("leave_requests")
       .update({
         status: "approved",
         reviewed_by: employeeData?.id,
         reviewed_at: new Date().toISOString(),
       })
-      .eq("id", timesheetId);
+      .eq("id", requestId);
 
     if (error) {
-      toast({ title: "Error", description: "Failed to approve timesheet", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to approve request", variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Timesheet approved" });
+      toast({ title: "Success", description: "Leave request approved" });
       fetchData();
     }
   };
 
-  const handleReject = async (timesheetId: string, reason: string) => {
+  const handleReject = async (requestId: string, reason: string) => {
     const { data: employeeData } = await supabase
       .from("employees")
       .select("id")
@@ -125,19 +148,19 @@ export default function Timesheets() {
       .single();
 
     const { error } = await supabase
-      .from("timesheets")
+      .from("leave_requests")
       .update({
         status: "rejected",
         reviewed_by: employeeData?.id,
         reviewed_at: new Date().toISOString(),
         rejection_reason: reason,
       })
-      .eq("id", timesheetId);
+      .eq("id", requestId);
 
     if (error) {
-      toast({ title: "Error", description: "Failed to reject timesheet", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to reject request", variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Timesheet rejected" });
+      toast({ title: "Success", description: "Leave request rejected" });
       fetchData();
     }
   };
@@ -154,17 +177,23 @@ export default function Timesheets() {
 
     if (!employeeData) return;
 
-    const { error } = await supabase.from("timesheets").insert({
+    const startDate = new Date(formData.get("start_date") as string);
+    const endDate = new Date(formData.get("end_date") as string);
+    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    const { error } = await supabase.from("leave_requests").insert({
       employee_id: employeeData.id,
-      week_start_date: formData.get("week_start_date") as string,
-      week_end_date: formData.get("week_end_date") as string,
-      total_hours: parseFloat(formData.get("total_hours") as string),
+      leave_type_id: formData.get("leave_type_id") as string,
+      start_date: formData.get("start_date") as string,
+      end_date: formData.get("end_date") as string,
+      total_days: totalDays,
+      reason: formData.get("reason") as string,
     });
 
     if (error) {
-      toast({ title: "Error", description: "Failed to submit timesheet", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to submit leave request", variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Timesheet submitted for approval" });
+      toast({ title: "Success", description: "Leave request submitted" });
       setDialogOpen(false);
       fetchData();
     }
@@ -173,7 +202,7 @@ export default function Timesheets() {
   if (loading) {
     return (
       <AppLayout>
-        <div className="text-center py-12">Loading timesheets...</div>
+        <div className="text-center py-12">Loading leave requests...</div>
       </AppLayout>
     );
   }
@@ -182,51 +211,51 @@ export default function Timesheets() {
     <AppLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Timesheets</h1>
-          <p className="text-muted-foreground">Manage time tracking and approvals</p>
+          <h1 className="text-3xl font-bold">Leave Requests</h1>
+          <p className="text-muted-foreground">Manage leave applications and approvals</p>
         </div>
 
-        <Tabs defaultValue={userRole && ["manager", "hr", "director", "ceo"].includes(userRole) ? "approvals" : "my-timesheets"}>
+        <Tabs defaultValue={userRole && ["manager", "hr", "director", "ceo"].includes(userRole) ? "pending" : "my-requests"}>
           <TabsList>
             {userRole && ["manager", "hr", "director", "ceo"].includes(userRole) && (
-              <TabsTrigger value="approvals">Pending Approvals</TabsTrigger>
+              <TabsTrigger value="pending">Pending Approvals</TabsTrigger>
             )}
-            <TabsTrigger value="my-timesheets">My Timesheets</TabsTrigger>
+            <TabsTrigger value="my-requests">My Requests</TabsTrigger>
           </TabsList>
 
           {userRole && ["manager", "hr", "director", "ceo"].includes(userRole) && (
-            <TabsContent value="approvals" className="space-y-4">
+            <TabsContent value="pending" className="space-y-4">
               <Card>
                 <CardHeader>
                   <CardTitle>Pending Approvals</CardTitle>
-                  <CardDescription>Review and approve team timesheets</CardDescription>
+                  <CardDescription>Review and approve team leave requests</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {teamTimesheets.length === 0 ? (
+                  {teamRequests.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
-                      <p>No pending timesheet approvals</p>
+                      <p>No pending leave requests</p>
                     </div>
                   ) : (
-                    teamTimesheets.map((timesheet) => (
+                    teamRequests.map((request) => (
                       <div
-                        key={timesheet.id}
+                        key={request.id}
                         className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex items-center gap-4">
                           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Clock className="h-5 w-5 text-primary" />
+                            <Calendar className="h-5 w-5 text-primary" />
                           </div>
                           <div>
                             <p className="font-medium">
-                              {timesheet.employee.profiles.first_name} {timesheet.employee.profiles.last_name}
+                              {request.employee.profiles.first_name} {request.employee.profiles.last_name}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                              Week: {new Date(timesheet.week_start_date).toLocaleDateString()} - {new Date(timesheet.week_end_date).toLocaleDateString()}
+                              {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
                             </p>
-                            <p className="text-sm text-muted-foreground">{timesheet.total_hours} hours total</p>
-                            <p className="text-xs text-muted-foreground">
-                              Submitted {new Date(timesheet.submitted_at).toLocaleDateString()}
+                            <p className="text-sm text-muted-foreground">
+                              {request.total_days} days • {request.leave_type?.name || "General Leave"}
                             </p>
+                            {request.reason && <p className="text-xs text-muted-foreground mt-1">{request.reason}</p>}
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -235,12 +264,12 @@ export default function Timesheets() {
                             variant="outline"
                             onClick={() => {
                               const reason = prompt("Enter rejection reason:");
-                              if (reason) handleReject(timesheet.id, reason);
+                              if (reason) handleReject(request.id, reason);
                             }}
                           >
                             <XCircle className="h-4 w-4 text-destructive" />
                           </Button>
-                          <Button size="sm" onClick={() => handleApprove(timesheet.id)}>
+                          <Button size="sm" onClick={() => handleApprove(request.id)}>
                             <CheckCircle className="h-4 w-4" />
                           </Button>
                         </div>
@@ -252,85 +281,102 @@ export default function Timesheets() {
             </TabsContent>
           )}
 
-          <TabsContent value="my-timesheets" className="space-y-4">
+          <TabsContent value="my-requests" className="space-y-4">
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>My Timesheets</CardTitle>
-                    <CardDescription>Your timesheet submission history</CardDescription>
+                    <CardTitle>My Leave Requests</CardTitle>
+                    <CardDescription>Your leave request history</CardDescription>
                   </div>
                   <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                     <DialogTrigger asChild>
                       <Button>
                         <Plus className="h-4 w-4 mr-2" />
-                        Submit New Timesheet
+                        New Request
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Submit Timesheet</DialogTitle>
+                        <DialogTitle>Submit Leave Request</DialogTitle>
                       </DialogHeader>
                       <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                          <Label htmlFor="week_start_date">Week Start Date</Label>
-                          <Input type="date" name="week_start_date" required />
+                          <Label htmlFor="leave_type_id">Leave Type</Label>
+                          <Select name="leave_type_id" required>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select leave type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {policies.map((policy) => (
+                                <SelectItem key={policy.id} value={policy.id}>
+                                  {policy.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div>
-                          <Label htmlFor="week_end_date">Week End Date</Label>
-                          <Input type="date" name="week_end_date" required />
+                          <Label htmlFor="start_date">Start Date</Label>
+                          <Input type="date" name="start_date" required />
                         </div>
                         <div>
-                          <Label htmlFor="total_hours">Total Hours</Label>
-                          <Input type="number" step="0.5" name="total_hours" required />
+                          <Label htmlFor="end_date">End Date</Label>
+                          <Input type="date" name="end_date" required />
                         </div>
-                        <Button type="submit" className="w-full">Submit Timesheet</Button>
+                        <div>
+                          <Label htmlFor="reason">Reason</Label>
+                          <Textarea name="reason" placeholder="Optional" />
+                        </div>
+                        <Button type="submit" className="w-full">Submit Request</Button>
                       </form>
                     </DialogContent>
                   </Dialog>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {myTimesheets.length === 0 ? (
+                {myRequests.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    <p>No timesheets submitted yet</p>
-                    <p className="text-sm mt-2">Submit your first timesheet to get started</p>
+                    <p>No leave requests yet</p>
+                    <p className="text-sm mt-2">Submit your first leave request to get started</p>
                   </div>
                 ) : (
-                  myTimesheets.map((timesheet) => (
+                  myRequests.map((request) => (
                     <div
-                      key={timesheet.id}
+                      key={request.id}
                       className="flex items-center justify-between p-4 border rounded-lg"
                     >
                       <div className="flex items-center gap-4">
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Clock className="h-5 w-5 text-primary" />
+                          <Calendar className="h-5 w-5 text-primary" />
                         </div>
                         <div>
                           <p className="font-medium">
-                            Week: {new Date(timesheet.week_start_date).toLocaleDateString()} - {new Date(timesheet.week_end_date).toLocaleDateString()}
+                            {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
                           </p>
-                          <p className="text-sm text-muted-foreground">{timesheet.total_hours} hours</p>
-                          {timesheet.status === "approved" && timesheet.reviewer && (
+                          <p className="text-sm text-muted-foreground">
+                            {request.total_days} days • {request.leave_type?.name || "General Leave"}
+                          </p>
+                          {request.status === "approved" && request.reviewer && (
                             <p className="text-xs text-muted-foreground">
-                              Approved by {timesheet.reviewer.profiles.first_name} {timesheet.reviewer.profiles.last_name}
+                              Approved by {request.reviewer.profiles.first_name} {request.reviewer.profiles.last_name}
                             </p>
                           )}
-                          {timesheet.status === "rejected" && (
-                            <p className="text-xs text-destructive">{timesheet.rejection_reason}</p>
+                          {request.status === "rejected" && (
+                            <p className="text-xs text-destructive">{request.rejection_reason}</p>
                           )}
                         </div>
                       </div>
                       <Badge
                         variant={
-                          timesheet.status === "approved"
+                          request.status === "approved"
                             ? "default"
-                            : timesheet.status === "rejected"
+                            : request.status === "rejected"
                             ? "destructive"
                             : "secondary"
                         }
                       >
-                        {timesheet.status}
+                        {request.status}
                       </Badge>
                     </div>
                   ))

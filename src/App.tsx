@@ -20,6 +20,7 @@ import Analytics from "./pages/Analytics";
 import NotFound from "./pages/NotFound";
 import AddEmployee from "./pages/AddEmployee";
 import LeavePolicies from "./pages/LeavePolicies";
+import LeaveRequests from "./pages/LeaveRequests";
 import Onboarding from "./pages/Onboarding";
 import ChangePassword from "./pages/ChangePassword";
 import OrgChart from "./pages/OrgChart";
@@ -58,6 +59,7 @@ const App = () => (
             
             {/* Common routes */}
             <Route path="/timesheets" element={<ProtectedRoute><Timesheets /></ProtectedRoute>} />
+            <Route path="/leaves" element={<ProtectedRoute><LeaveRequests /></ProtectedRoute>} />
             <Route path="/org-chart" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />

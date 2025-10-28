@@ -71,41 +71,63 @@ export default function OrgChart() {
 
   const renderNode = (node: TreeNode, level: number = 0) => {
     const initials = `${node.profiles.first_name[0]}${node.profiles.last_name[0]}`;
+    const hasChildren = node.children.length > 0;
     
     return (
       <div key={node.id} className="flex flex-col items-center">
-        <Card className="w-64 mb-4 transition-all hover:shadow-medium">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-12 w-12">
-                <AvatarFallback className="bg-primary/10 text-primary">
+        {/* Employee Card */}
+        <Card className="w-72 mb-6 transition-all hover:shadow-lg border-2 hover:border-primary/50">
+          <CardContent className="p-5">
+            <div className="flex flex-col items-center text-center gap-3">
+              <Avatar className="h-16 w-16 border-2 border-primary/20">
+                <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary text-lg font-semibold">
                   {initials}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate">
+              <div className="space-y-1">
+                <p className="font-bold text-base">
                   {node.profiles.first_name} {node.profiles.last_name}
                 </p>
-                <p className="text-xs text-muted-foreground truncate">{node.position}</p>
-                <p className="text-xs text-muted-foreground/60 truncate">{node.employee_id}</p>
+                <p className="text-sm text-primary font-medium">{node.position}</p>
+                <p className="text-xs text-muted-foreground">{node.employee_id}</p>
               </div>
             </div>
           </CardContent>
         </Card>
         
-        {node.children.length > 0 && (
-          <div className="relative">
-            {/* Vertical line to children */}
-            <div className="absolute left-1/2 -translate-x-1/2 w-0.5 h-8 bg-border" />
+        {/* Children Section */}
+        {hasChildren && (
+          <div className="flex flex-col items-center">
+            {/* Vertical line down to children */}
+            <div className="w-0.5 h-12 bg-gradient-to-b from-border to-transparent" />
             
-            <div className="flex gap-8 pt-8">
-              {node.children.map(child => (
-                <div key={child.id} className="relative">
-                  {/* Horizontal line from parent */}
-                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 w-0.5 h-8 bg-border" />
-                  {renderNode(child, level + 1)}
-                </div>
-              ))}
+            {/* Horizontal connector and children */}
+            <div className="relative">
+              {/* Horizontal line connecting all children */}
+              {node.children.length > 1 && (
+                <div 
+                  className="absolute top-0 bg-border h-0.5" 
+                  style={{
+                    left: '50%',
+                    right: '50%',
+                    transform: 'translateX(-50%)',
+                    width: `${(node.children.length - 1) * 320 + 144}px`
+                  }}
+                />
+              )}
+              
+              {/* Children containers */}
+              <div className="flex gap-8 pt-12">
+                {node.children.map((child, index) => (
+                  <div key={child.id} className="relative flex flex-col items-center">
+                    {/* Vertical line up to horizontal connector */}
+                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-0.5 h-12 bg-border" />
+                    
+                    {/* Recursively render child node */}
+                    {renderNode(child, level + 1)}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

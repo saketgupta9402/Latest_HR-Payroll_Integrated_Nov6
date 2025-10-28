@@ -1,1 +1,13 @@
 project_id = "luuunhmswjszoxrojqxx"
+
+[functions.create-employee]
+verify_jwt = true
+
+[functions.setup-employee-password]
+verify_jwt = false
+
+[functions.verify-employee-email]
+verify_jwt = false
+
+[functions.ai-chat]
+verify_jwt = true
