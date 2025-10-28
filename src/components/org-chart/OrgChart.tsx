@@ -29,19 +29,28 @@ export default function OrgChart() {
   }, []);
 
   const fetchOrgStructure = async () => {
-    const { data: employees } = await supabase
+    const { data: employees, error } = await supabase
       .from('employees')
       .select(`
         id,
         employee_id,
         position,
         reporting_manager_id,
-        profiles!employees_user_id_fkey(first_name, last_name, email)
+        user_id,
+        profiles:profiles!employees_user_id_fkey(first_name, last_name, email)
       `)
       .eq('status', 'active');
 
+    if (error) {
+      console.error('Error fetching org structure:', error);
+      setLoading(false);
+      return;
+    }
+
     if (employees) {
-      const orgTree = buildTree(employees as any);
+      // Filter out any employees without profile data
+      const validEmployees = employees.filter(emp => emp.profiles);
+      const orgTree = buildTree(validEmployees as any);
       setTree(orgTree);
     }
     setLoading(false);
@@ -70,6 +79,11 @@ export default function OrgChart() {
   };
 
   const renderNode = (node: TreeNode, level: number = 0) => {
+    if (!node.profiles) {
+      console.error('Node missing profile data:', node);
+      return null;
+    }
+    
     const initials = `${node.profiles.first_name[0]}${node.profiles.last_name[0]}`;
     const hasChildren = node.children.length > 0;
     
