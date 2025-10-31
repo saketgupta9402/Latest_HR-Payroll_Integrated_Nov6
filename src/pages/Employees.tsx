@@ -48,6 +48,15 @@ export default function Employees() {
 
   useEffect(() => {
     fetchEmployees();
+
+    // Poll for employee presence updates every 30 seconds
+    const presenceInterval = setInterval(() => {
+      fetchEmployees();
+    }, 30000);
+
+    return () => {
+      clearInterval(presenceInterval);
+    };
   }, [user, userRole]);
 
   const fetchEmployees = async () => {
@@ -85,9 +94,9 @@ export default function Employees() {
   const getPresenceColor = (status?: string) => {
     switch (status) {
       case 'online': return 'bg-green-500';
-      case 'away': return 'bg-yellow-500';
-      case 'break': return 'bg-blue-500';
-      case 'out_of_office': return 'bg-gray-500';
+      case 'away': return 'bg-red-500';
+      case 'break': return 'bg-yellow-500';
+      case 'out_of_office': return 'bg-blue-500';
       default: return 'bg-gray-400';
     }
   };

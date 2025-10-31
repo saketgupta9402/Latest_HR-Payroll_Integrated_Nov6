@@ -34,6 +34,15 @@ export default function Dashboard() {
     checkOnboardingStatus();
     fetchDashboardStats();
     fetchPresenceStatus();
+
+    // Poll for presence updates every 30 seconds
+    const presenceInterval = setInterval(() => {
+      fetchPresenceStatus();
+    }, 30000);
+
+    return () => {
+      clearInterval(presenceInterval);
+    };
   }, [user]);
 
   const fetchDashboardStats = async () => {
@@ -138,9 +147,9 @@ export default function Dashboard() {
   const getPresenceColor = (status: string) => {
     switch (status) {
       case 'online': return 'bg-green-500';
-      case 'away': return 'bg-yellow-500';
-      case 'break': return 'bg-blue-500';
-      case 'out_of_office': return 'bg-gray-500';
+      case 'away': return 'bg-red-500';
+      case 'break': return 'bg-yellow-500';
+      case 'out_of_office': return 'bg-blue-500';
       default: return 'bg-gray-500';
     }
   };
@@ -176,19 +185,19 @@ export default function Dashboard() {
                 </SelectItem>
                 <SelectItem value="away">
                   <div className="flex items-center gap-2">
-                    <Circle className="h-2 w-2 bg-yellow-500 rounded-full" fill="currentColor" />
+                    <Circle className="h-2 w-2 bg-red-500 rounded-full" fill="currentColor" />
                     Away
                   </div>
                 </SelectItem>
                 <SelectItem value="break">
                   <div className="flex items-center gap-2">
-                    <Circle className="h-2 w-2 bg-blue-500 rounded-full" fill="currentColor" />
+                    <Circle className="h-2 w-2 bg-yellow-500 rounded-full" fill="currentColor" />
                     Break
                   </div>
                 </SelectItem>
                 <SelectItem value="out_of_office">
                   <div className="flex items-center gap-2">
-                    <Circle className="h-2 w-2 bg-gray-500 rounded-full" fill="currentColor" />
+                    <Circle className="h-2 w-2 bg-blue-500 rounded-full" fill="currentColor" />
                     Out of Office
                   </div>
                 </SelectItem>

@@ -60,9 +60,9 @@ function buildTree(employees: Employee[]): TreeNode[] {
 function getPresenceColor(status?: string) {
   switch (status) {
     case 'online': return 'bg-green-500';
-    case 'away': return 'bg-yellow-500';
-    case 'break': return 'bg-blue-500';
-    case 'out_of_office': return 'bg-gray-500';
+    case 'away': return 'bg-red-500';
+    case 'break': return 'bg-yellow-500';
+    case 'out_of_office': return 'bg-blue-500';
     default: return 'bg-gray-400';
   }
 }
