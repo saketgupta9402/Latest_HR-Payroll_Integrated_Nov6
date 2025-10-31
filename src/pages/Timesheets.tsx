@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Clock, Save, Check, X, Calendar } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,16 +42,105 @@ export default function Timesheets() {
   const [timesheet, setTimesheet] = useState<Timesheet | null>(null);
   const [entries, setEntries] = useState<Record<string, TimesheetEntry>>({});
   const [shifts, setShifts] = useState<Record<string, Shift>>({});
+  const [holidays, setHolidays] = useState<any[]>([]);
+  const [holidayCalendar, setHolidayCalendar] = useState<any>({});
+  const [selectedState, setSelectedState] = useState<string>('all');
+  const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [employeeId, setEmployeeId] = useState<string>('');
+  const [employeeState, setEmployeeState] = useState<string>('');
   const { user } = useAuth();
   const { toast } = useToast();
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentWeek, i));
 
+  const fetchEmployeeInfo = async () => {
+    try {
+      const empId = await api.getEmployeeId();
+      setEmployeeId(empId?.id || '');
+      
+      // Fetch employee state
+      if (empId?.id) {
+        const resp = await fetch(
+          `${import.meta.env.VITE_API_URL}/api/employees/${empId.id}`,
+          { headers: { Authorization: `Bearer ${api.token || localStorage.getItem('auth_token')}` } }
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          setEmployeeState(data.state || '');
+          if (!selectedState || selectedState === 'all') {
+            setSelectedState(data.state || 'all');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching employee info:', error);
+    }
+  };
+
+  const fetchHolidays = async () => {
+    if (!employeeId) return;
+    
+    try {
+      const currentYear = new Date().getFullYear();
+      const stateParam = selectedState === 'all' ? null : selectedState;
+      const params = new URLSearchParams({ year: currentYear.toString() });
+      if (stateParam) params.append('state', stateParam);
+      
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/holidays/employee/${employeeId}?${params}`,
+        { headers: { Authorization: `Bearer ${api.token || localStorage.getItem('auth_token')}` } }
+      );
+      
+      if (resp.ok) {
+        const data = await resp.json();
+        setHolidays(data.holidays || []);
+      }
+    } catch (error) {
+      console.error('Error fetching holidays:', error);
+    }
+  };
+
+  const fetchHolidayCalendar = async () => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const params = new URLSearchParams({ year: currentYear.toString() });
+      if (selectedState && selectedState !== 'all') {
+        params.append('state', selectedState);
+      }
+      
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/holidays/calendar?${params}`,
+        { headers: { Authorization: `Bearer ${api.token || localStorage.getItem('auth_token')}` } }
+      );
+      
+      if (resp.ok) {
+        const data = await resp.json();
+        setHolidayCalendar(data);
+        if (data.states && data.states.length > 0) {
+          setAvailableStates(data.states);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching holiday calendar:', error);
+    }
+  };
+
   useEffect(() => {
+    fetchEmployeeInfo();
     fetchTimesheet();
     fetchShifts();
   }, [currentWeek, user]);
+
+  useEffect(() => {
+    if (employeeId) {
+      fetchHolidays();
+    }
+  }, [employeeId, selectedState, currentWeek]);
+
+  useEffect(() => {
+    fetchHolidayCalendar();
+  }, [selectedState]);
 
   // Ensure entries are initialized
   useEffect(() => {
@@ -82,7 +172,7 @@ export default function Timesheets() {
       if (timesheetData) {
         setTimesheet(timesheetData as any);
         
-        // Map entries by date
+        // Map entries by date (including holidays)
         const entriesMap: Record<string, TimesheetEntry> = {};
         (timesheetData as any).entries?.forEach((entry: any) => {
           // Convert work_date to YYYY-MM-DD format if it's an ISO string
@@ -102,6 +192,11 @@ export default function Timesheets() {
           };
         });
         setEntries(entriesMap);
+        
+        // Set holiday calendar if provided
+        if ((timesheetData as any).holidayCalendar) {
+          setHolidays((timesheetData as any).holidayCalendar || []);
+        }
       } else {
         // Initialize empty entries
         const emptyEntries: Record<string, TimesheetEntry> = {};
@@ -484,14 +579,22 @@ export default function Timesheets() {
                     const dateStr = format(day, "yyyy-MM-dd");
                     const entry = entries[dateStr] || { work_date: dateStr, hours: 0, description: "" };
                     const hasShift = shifts[dateStr];
+                    const isHoliday = entry.is_holiday || holidays.some(h => h.date === dateStr);
+                    const holidayName = holidays.find(h => h.date === dateStr)?.name;
                     return (
                       <td
                         key={dateStr}
-                        className={`p-2 ${isToday(day) ? "bg-primary/10" : ""} ${hasShift ? "relative" : ""}`}
+                        className={`p-2 ${isToday(day) ? "bg-primary/10" : ""} ${hasShift ? "relative" : ""} ${isHoliday ? "bg-green-50 dark:bg-green-950/20" : ""}`}
                       >
                         {hasShift && (
                           <Badge variant="outline" className="absolute -top-2 -right-1 text-xs">
                             {shifts[dateStr].shift_type}
+                          </Badge>
+                        )}
+                        {isHoliday && (
+                          <Badge variant="outline" className="mb-1 text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                            <Calendar className="h-3 w-3 mr-1" />
+                            Holiday
                           </Badge>
                         )}
                         <Input
@@ -502,7 +605,7 @@ export default function Timesheets() {
                           value={entry.hours || ""}
                           onChange={(e) => updateEntry(dateStr, "hours", e.target.value)}
                           className="text-center"
-                          disabled={!isEditable}
+                          disabled={!isEditable || isHoliday}
                           placeholder="0"
                         />
                       </td>
@@ -517,17 +620,20 @@ export default function Timesheets() {
                   {weekDays.map((day) => {
                     const dateStr = format(day, "yyyy-MM-dd");
                     const entry = entries[dateStr] || { work_date: dateStr, hours: 0, description: "" };
+                    const isHoliday = entry.is_holiday || holidays.some(h => h.date === dateStr);
+                    const holidayName = holidays.find(h => h.date === dateStr)?.name;
                     return (
                       <td
                         key={dateStr}
-                        className={`p-2 ${isToday(day) ? "bg-primary/10" : ""}`}
+                        className={`p-2 ${isToday(day) ? "bg-primary/10" : ""} ${isHoliday ? "bg-green-50 dark:bg-green-950/20" : ""}`}
                       >
                         <Input
                           type="text"
-                          value={entry.description || ""}
+                          value={isHoliday ? (holidayName || entry.description || "Holiday") : (entry.description || "")}
                           onChange={(e) => updateEntry(dateStr, "description", e.target.value)}
                           placeholder="Task details"
-                          disabled={!isEditable}
+                          disabled={!isEditable || isHoliday}
+                          className={isHoliday ? "text-green-700 dark:text-green-400 font-medium" : ""}
                         />
                       </td>
                     );
@@ -551,6 +657,72 @@ export default function Timesheets() {
             <div className="mt-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
               <p className="font-semibold text-destructive">Rejection Reason:</p>
               <p className="text-sm mt-1">{timesheet.rejection_reason}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Holiday Calendar */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Holiday Calendar ({new Date().getFullYear()})
+            </span>
+            <Select value={selectedState || 'all'} onValueChange={(v) => setSelectedState(v)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select State" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All States</SelectItem>
+                {availableStates.map(state => (
+                  <SelectItem key={state} value={state}>{state}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {holidayCalendar.holidaysByState && Object.keys(holidayCalendar.holidaysByState).length > 0 ? (
+            <div className="space-y-4">
+              {(selectedState === 'all' ? Object.keys(holidayCalendar.holidaysByState) : [selectedState]).map(state => {
+                const stateHolidays = holidayCalendar.holidaysByState[state] || [];
+                if (stateHolidays.length === 0) return null;
+                return (
+                  <div key={state} className="border rounded-lg p-4">
+                    <h3 className="font-semibold text-lg mb-3">{state} ({stateHolidays.length} holidays)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {stateHolidays.map((holiday: any) => {
+                        const holidayDate = new Date(holiday.date);
+                        const isInCurrentWeek = weekDays.some(d => isSameDay(d, holidayDate));
+                        return (
+                          <div
+                            key={holiday.id}
+                            className={`p-2 rounded border text-sm ${
+                              isInCurrentWeek ? 'bg-primary/10 border-primary' : ''
+                            }`}
+                          >
+                            <div className="font-medium">{holiday.name}</div>
+                            <div className="text-muted-foreground text-xs mt-1">
+                              {format(holidayDate, 'MMM dd, yyyy (EEE)')}
+                            </div>
+                            {holiday.is_national && (
+                              <Badge variant="outline" className="mt-1 text-xs">National</Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No holidays available for the selected state</p>
+              <p className="text-sm mt-2">Contact HR to add holiday lists for your state</p>
             </div>
           )}
         </CardContent>

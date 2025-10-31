@@ -46,6 +46,7 @@ const hrItems = [
   { title: "New Project", url: "/projects/new", icon: Building2, showBadge: false },
   { title: "CEO Dashboard", url: "/ceo/dashboard", icon: BarChart3, showBadge: false },
   { title: "Project Calendar", url: "/calendar", icon: CalendarClock, showBadge: false },
+  { title: "Holiday Management", url: "/holidays", icon: Calendar, showBadge: false },
   { title: "Policies", url: "/policies", icon: FileText, showBadge: false },
   { title: "Analytics", url: "/analytics", icon: BarChart3, showBadge: false },
   { title: "AI Assistant", url: "/ai-assistant", icon: Bot, showBadge: false },

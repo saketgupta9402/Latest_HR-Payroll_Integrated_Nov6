@@ -40,6 +40,7 @@ import CEODashboard from "./pages/CEODashboard";
 import EmployeeDetail from "./pages/EmployeeDetail";
 import MyProfile from "./pages/MyProfile";
 import ProjectCalendar from "./pages/ProjectCalendar";
+import HolidayManagement from "./pages/HolidayManagement";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ const App = () => (
             <Route path="/workflows/new" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo']}><WorkflowEditor /></ProtectedRoute>} />
             <Route path="/workflows/:id/edit" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo']}><WorkflowEditor /></ProtectedRoute>} />
             <Route path="/policies" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo']}><LeavePolicies /></ProtectedRoute>} />
+            <Route path="/holidays" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo']}><HolidayManagement /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo']}><Analytics /></ProtectedRoute>} />
             <Route path="/ceo/dashboard" element={<ProtectedRoute allowedRoles={['hr','director','ceo']}><CEODashboard /></ProtectedRoute>} />
             <Route path="/projects/new" element={<ProtectedRoute allowedRoles={['hr','director','ceo']}><ProjectNew /></ProtectedRoute>} />
