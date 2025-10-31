@@ -4,12 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
-import { Clock, Save, Check, X, Calendar as CalendarIcon } from "lucide-react";
+import { Clock, Save, Check, X, Calendar as CalendarIcon, RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, startOfWeek, format, isSameDay } from "date-fns";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 interface TimesheetEntry {
   id?: string;
@@ -52,6 +55,8 @@ export default function Timesheets() {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [employeeState, setEmployeeState] = useState<string>('');
   const [assignedProjects, setAssignedProjects] = useState<Array<{id: string; project_id: string; project_name: string}>>([]);
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [reopenComment, setReopenComment] = useState("");
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -562,6 +567,45 @@ export default function Timesheets() {
     }
   };
 
+  const handleReopen = () => {
+    if (!timesheet) return;
+    setReopenComment("");
+    setReopenDialogOpen(true);
+  };
+
+  const confirmReopen = async () => {
+    if (!timesheet || !reopenComment.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide a comment for reopening",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      // Call API to reopen the timesheet
+      await api.approveTimesheet(timesheet.id!, 'return', reopenComment.trim());
+      setReopenDialogOpen(false);
+      setReopenComment("");
+      await fetchTimesheet();
+      toast({
+        title: "Success",
+        description: "Timesheet reopened successfully. You can now edit and resubmit.",
+      });
+    } catch (error: any) {
+      console.error("Error reopening timesheet:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reopen timesheet",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const isToday = (date: Date) => isSameDay(date, new Date());
   const isEditable = !timesheet || timesheet.status === "pending";
 
@@ -806,10 +850,16 @@ export default function Timesheets() {
             </div>
           )}
 
-          {timesheet?.status === "rejected" && timesheet.rejection_reason && (
-            <div className="mt-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-              <p className="font-semibold text-destructive">Rejection Reason:</p>
-              <p className="text-sm mt-1">{timesheet.rejection_reason}</p>
+          {timesheet?.status === "rejected" && (
+            <div className="mt-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg space-y-3">
+              <div>
+                <p className="font-semibold text-destructive">Rejection Reason:</p>
+                <p className="text-sm mt-1">{timesheet.rejection_reason}</p>
+              </div>
+              <Button onClick={handleReopen} variant="outline" size="sm">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reopen for Editing
+              </Button>
             </div>
           )}
         </CardContent>
@@ -880,6 +930,39 @@ export default function Timesheets() {
           )}
         </CardContent>
       </Card>
+
+      {/* Reopen Dialog */}
+      <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reopen Timesheet</DialogTitle>
+            <DialogDescription>
+              Provide a comment explaining why you're reopening this timesheet for editing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="reopen-comment">Comment</Label>
+              <Textarea
+                id="reopen-comment"
+                placeholder="Enter your comment..."
+                value={reopenComment}
+                onChange={(e) => setReopenComment(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReopenDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmReopen} disabled={!reopenComment.trim() || loading}>
+              <RotateCcw className="h-4 w-4 mr-2" />
+              {loading ? "Reopening..." : "Reopen"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </AppLayout>
   );
