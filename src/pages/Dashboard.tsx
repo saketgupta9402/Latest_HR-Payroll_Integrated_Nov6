@@ -1,6 +1,6 @@
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Clock, Calendar, TrendingUp, AlertCircle, CheckCircle, Circle } from "lucide-react";
+import { Users, Clock, Calendar, TrendingUp, AlertCircle, CheckCircle, Circle, BarChart3, Building2, DollarSign, Target, Activity, Briefcase, UserCheck, FileText, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
@@ -16,6 +16,18 @@ interface DashboardStats {
   avgAttendance: number;
 }
 
+interface CEODashboardStats {
+  totalEmployees: number;
+  activeProjects: number;
+  pendingApprovals: number;
+  pendingLeaves: number;
+  pendingTimesheets: number;
+  activeAssignments: number;
+  employeeGrowth: number;
+  topDepartments: Array<{ name: string; count: number }>;
+  projectUtilization: Array<any>;
+}
+
 export default function Dashboard() {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
@@ -29,10 +41,25 @@ export default function Dashboard() {
   });
   const [presenceStatus, setPresenceStatus] = useState<string>('online');
   const [hasActiveLeave, setHasActiveLeave] = useState(false);
+  const [ceoStats, setCeoStats] = useState<CEODashboardStats>({
+    totalEmployees: 0,
+    activeProjects: 0,
+    pendingApprovals: 0,
+    pendingLeaves: 0,
+    pendingTimesheets: 0,
+    activeAssignments: 0,
+    employeeGrowth: 0,
+    topDepartments: [],
+    projectUtilization: [],
+  });
 
   useEffect(() => {
     checkOnboardingStatus();
-    fetchDashboardStats();
+    if (userRole === 'ceo') {
+      fetchCEODashboardStats();
+    } else {
+      fetchDashboardStats();
+    }
     fetchPresenceStatus();
 
     // Poll for presence updates every 15 seconds
@@ -79,6 +106,48 @@ export default function Dashboard() {
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
+    }
+  };
+
+  const fetchCEODashboardStats = async () => {
+    if (!user) return;
+
+    try {
+      setIsLoading(true);
+      
+      // Fetch analytics data for comprehensive CEO dashboard
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/analytics`,
+        { headers: { Authorization: `Bearer ${api.token || localStorage.getItem('auth_token')}` } }
+      );
+      
+      if (!resp.ok) {
+        throw new Error('Failed to fetch analytics');
+      }
+      
+      const data = await resp.json();
+      
+      // Get pending counts
+      const counts = await api.getPendingCounts();
+      
+      setCeoStats({
+        totalEmployees: data.overall?.total_employees || 0,
+        activeProjects: data.overall?.active_projects || 0,
+        pendingApprovals: counts.timesheets + counts.leaves,
+        pendingLeaves: counts.leaves,
+        pendingTimesheets: counts.timesheets,
+        activeAssignments: data.overall?.active_assignments || 0,
+        employeeGrowth: data.employeeGrowth?.slice(-1)[0]?.count || 0,
+        topDepartments: (data.departmentData || []).slice(0, 5).map((row: any) => ({ 
+          name: row.name, 
+          count: parseInt(row.value) || 0 
+        })),
+        projectUtilization: data.projectUtilization || [],
+      });
+    } catch (error) {
+      console.error('Error fetching CEO dashboard stats:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -161,6 +230,287 @@ export default function Dashboard() {
     return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
+  // CEO Dashboard View
+  if (userRole === 'ceo') {
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">CEO Dashboard</h1>
+              <p className="text-muted-foreground">Strategic overview of your organization</p>
+            </div>
+            {/* Presence Status Selector */}
+            <div className="flex items-center gap-3">
+              <Circle className={`h-3 w-3 ${getPresenceColor(presenceStatus)} rounded-full`} fill="currentColor" />
+              <Select value={presenceStatus} onValueChange={handlePresenceChange}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="online">
+                    <div className="flex items-center gap-2">
+                      <Circle className="h-2 w-2 text-green-500" fill="currentColor" />
+                      Online
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="away">
+                    <div className="flex items-center gap-2">
+                      <Circle className="h-2 w-2 text-red-500" fill="currentColor" />
+                      Away
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="break">
+                    <div className="flex items-center gap-2">
+                      <Circle className="h-2 w-2 text-yellow-500" fill="currentColor" />
+                      Break
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="out_of_office">
+                    <div className="flex items-center gap-2">
+                      <Circle className="h-2 w-2 text-blue-500" fill="currentColor" />
+                      Out of Office
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Key Metrics - Interactive Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="transition-all hover:shadow-lg cursor-pointer group" onClick={() => navigate('/employees')}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Employees</CardTitle>
+                <Users className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{ceoStats.totalEmployees}</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                  <ArrowUpRight className="h-3 w-3 text-green-500" />
+                  <span>Active workforce</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="transition-all hover:shadow-lg cursor-pointer group" onClick={() => navigate('/ceo/dashboard')}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Active Projects</CardTitle>
+                <Briefcase className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{ceoStats.activeProjects}</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                  <Target className="h-3 w-3 text-blue-500" />
+                  <span>In progress</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="transition-all hover:shadow-lg cursor-pointer group" onClick={() => navigate('/timesheet-approvals')}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Pending Timesheets</CardTitle>
+                <Clock className="h-4 w-4 text-warning group-hover:scale-110 transition-transform" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{ceoStats.pendingTimesheets}</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                  <AlertCircle className="h-3 w-3 text-orange-500" />
+                  <span>Requires action</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="transition-all hover:shadow-lg cursor-pointer group" onClick={() => navigate('/leaves')}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Pending Leaves</CardTitle>
+                <Calendar className="h-4 w-4 text-warning group-hover:scale-110 transition-transform" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{ceoStats.pendingLeaves}</div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                  <AlertCircle className="h-3 w-3 text-orange-500" />
+                  <span>Needs review</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Department Distribution & Project Utilization */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-primary" />
+                    Top Departments
+                  </CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => navigate('/employees')}>
+                    View All
+                    <ArrowUpRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {ceoStats.topDepartments.length > 0 ? (
+                    ceoStats.topDepartments.map((dept, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Users className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{dept.name}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold">{dept.count}</span>
+                          <span className="text-xs text-muted-foreground">employees</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No department data available</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-primary" />
+                    Project Utilization
+                  </CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => navigate('/ceo/dashboard')}>
+                    View All
+                    <ArrowUpRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {ceoStats.projectUtilization.length > 0 ? (
+                    ceoStats.projectUtilization.slice(0, 5).map((project: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{project.project_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {project.assigned_employees || 0} employees
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold">
+                            {Number(project.avg_allocation || 0).toFixed(0)}%
+                          </span>
+                          <div className="h-8 w-1 bg-primary rounded-full" />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Building2 className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No project data available</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                Quick Actions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-4">
+                <Button variant="outline" className="justify-start h-auto py-3 flex-col items-start hover:bg-primary/5" asChild>
+                  <Link to="/employees/new">
+                    <UserCheck className="h-5 w-5 mb-2" />
+                    <span className="font-semibold">Add Employee</span>
+                    <span className="text-xs text-muted-foreground">Onboard new team member</span>
+                  </Link>
+                </Button>
+                <Button variant="outline" className="justify-start h-auto py-3 flex-col items-start hover:bg-primary/5" asChild>
+                  <Link to="/projects/new">
+                    <Briefcase className="h-5 w-5 mb-2" />
+                    <span className="font-semibold">New Project</span>
+                    <span className="text-xs text-muted-foreground">Start a new initiative</span>
+                  </Link>
+                </Button>
+                <Button variant="outline" className="justify-start h-auto py-3 flex-col items-start hover:bg-primary/5" asChild>
+                  <Link to="/analytics">
+                    <BarChart3 className="h-5 w-5 mb-2" />
+                    <span className="font-semibold">View Analytics</span>
+                    <span className="text-xs text-muted-foreground">Deep dive into data</span>
+                  </Link>
+                </Button>
+                <Button variant="outline" className="justify-start h-auto py-3 flex-col items-start hover:bg-primary/5" asChild>
+                  <Link to="/employee-stats">
+                    <Activity className="h-5 w-5 mb-2" />
+                    <span className="font-semibold">Employee Stats</span>
+                    <span className="text-xs text-muted-foreground">Performance insights</span>
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Strategic Overview */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="bg-primary/5 border-primary/20">
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Active Assignments</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-primary">{ceoStats.activeAssignments}</div>
+                <p className="text-xs text-muted-foreground mt-1">Current project assignments</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-success/5 border-success/20">
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Analytics Dashboard</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">View comprehensive insights</span>
+                  <Button variant="ghost" size="sm" onClick={() => navigate('/analytics')}>
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-warning/5 border-warning/20">
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">CEO Staffing</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Manage project staffing</span>
+                  <Button variant="ghost" size="sm" onClick={() => navigate('/ceo/dashboard')}>
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // Regular Dashboard View
   return (
     <AppLayout>
       <div className="space-y-6">
