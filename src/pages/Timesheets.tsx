@@ -21,6 +21,7 @@ interface TimesheetEntry {
   description: string;
   project_id?: string | null;
   project_type?: 'assigned' | 'non-billable' | 'internal' | null;
+  is_holiday?: boolean;
 }
 
 interface Timesheet {
@@ -97,6 +98,72 @@ export default function Timesheets() {
     }
   };
 
+  // Helper function to normalize date to YYYY-MM-DD format
+  const normalizeDate = (date: any): string => {
+    if (!date) return '';
+    if (typeof date === 'string') {
+      // If it's already YYYY-MM-DD format
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return date;
+      }
+      // If it contains T (ISO format), extract date part
+      if (date.includes('T')) {
+        return date.split('T')[0];
+      }
+      // Try to parse as date
+      try {
+        const d = new Date(date);
+        if (!isNaN(d.getTime())) {
+          return format(d, 'yyyy-MM-dd');
+        }
+      } catch (e) {
+        console.warn('Invalid date format:', date);
+      }
+    }
+    if (date instanceof Date) {
+      return format(date, 'yyyy-MM-dd');
+    }
+    // Fallback: try to extract date part
+    const dateStr = String(date);
+    if (dateStr.includes('T')) {
+      return dateStr.split('T')[0];
+    }
+    return dateStr.substring(0, 10);
+  };
+
+  // Check if a date is a holiday (checking all sources)
+  const isDateHoliday = (dateStr: string): boolean => {
+    // 1. Check entry.is_holiday flag
+    const entry = entries[dateStr];
+    if (entry?.is_holiday) return true;
+    
+    // 2. Check holidays array (normalized dates)
+    if (holidays.some(h => normalizeDate(h.date) === dateStr)) return true;
+    
+    // 3. Check timesheet.holidayCalendar
+    if (timesheet?.holidayCalendar && Array.isArray(timesheet.holidayCalendar)) {
+      if (timesheet.holidayCalendar.some((h: any) => normalizeDate(h.date) === dateStr)) return true;
+    }
+    
+    // 4. Check holidayCalendar.holidaysByState
+    if (holidayCalendar?.holidaysByState) {
+      const stateToCheck = selectedState === 'all' ? employeeState : selectedState;
+      if (stateToCheck && holidayCalendar.holidaysByState[stateToCheck]) {
+        if (holidayCalendar.holidaysByState[stateToCheck].some((h: any) => normalizeDate(h.date) === dateStr)) return true;
+      }
+      // Also check all states if selectedState is 'all'
+      if (selectedState === 'all') {
+        for (const stateHolidays of Object.values(holidayCalendar.holidaysByState)) {
+          if (Array.isArray(stateHolidays) && stateHolidays.some((h: any) => normalizeDate(h.date) === dateStr)) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  };
+
   const fetchHolidays = async () => {
     if (!employeeId) return;
     
@@ -113,7 +180,12 @@ export default function Timesheets() {
       
       if (resp.ok) {
         const data = await resp.json();
-        setHolidays(data.holidays || []);
+        // Normalize dates when setting holidays
+        const normalizedHolidays = (data.holidays || []).map((h: any) => ({
+          ...h,
+          date: normalizeDate(h.date)
+        })).filter((h: any) => h.date);
+        setHolidays(normalizedHolidays);
       }
     } catch (error) {
       console.error('Error fetching holidays:', error);
@@ -175,6 +247,78 @@ export default function Timesheets() {
     fetchHolidayCalendar();
   }, [selectedState]);
 
+  // Update entries when holidays change to ensure is_holiday flag is set correctly
+  useEffect(() => {
+    if (weekDays.length === 0) return;
+    
+    setEntries((prevEntries) => {
+      const updatedEntries = { ...prevEntries };
+      
+      weekDays.forEach((day) => {
+        const dateStr = format(day, "yyyy-MM-dd");
+        
+        // Check all holiday sources (without using entries state to avoid circular dependency)
+        let isHoliday = false;
+        
+        // 1. Check holidays array
+        if (holidays.some(h => normalizeDate(h.date) === dateStr)) {
+          isHoliday = true;
+        }
+        // 2. Check timesheet.holidayCalendar
+        else if (timesheet?.holidayCalendar && Array.isArray(timesheet.holidayCalendar)) {
+          if (timesheet.holidayCalendar.some((h: any) => normalizeDate(h.date) === dateStr)) {
+            isHoliday = true;
+          }
+        }
+        // 3. Check holidayCalendar.holidaysByState
+        else if (holidayCalendar?.holidaysByState) {
+          const stateToCheck = selectedState === 'all' ? employeeState : selectedState;
+          if (stateToCheck && holidayCalendar.holidaysByState[stateToCheck]) {
+            if (holidayCalendar.holidaysByState[stateToCheck].some((h: any) => normalizeDate(h.date) === dateStr)) {
+              isHoliday = true;
+            }
+          }
+          // Also check all states if selectedState is 'all'
+          if (selectedState === 'all' && !isHoliday) {
+            for (const stateHolidays of Object.values(holidayCalendar.holidaysByState)) {
+              if (Array.isArray(stateHolidays) && stateHolidays.some((h: any) => normalizeDate(h.date) === dateStr)) {
+                isHoliday = true;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Update entry with correct is_holiday flag
+        if (updatedEntries[dateStr]) {
+          updatedEntries[dateStr] = {
+            ...updatedEntries[dateStr],
+            is_holiday: isHoliday,
+            // If it's a holiday and has no description, set it to "Holiday"
+            description: isHoliday && !updatedEntries[dateStr].description 
+              ? "Holiday" 
+              : updatedEntries[dateStr].description,
+            // If it's a holiday, clear project_id and project_type
+            project_id: isHoliday ? null : updatedEntries[dateStr].project_id,
+            project_type: isHoliday ? null : updatedEntries[dateStr].project_type,
+          };
+        } else {
+          // Create new entry if it doesn't exist
+          updatedEntries[dateStr] = {
+            work_date: dateStr,
+            hours: 0,
+            description: isHoliday ? "Holiday" : "",
+            project_id: null,
+            project_type: null,
+            is_holiday: isHoliday,
+          };
+        }
+      });
+      
+      return updatedEntries;
+    });
+  }, [holidays, holidayCalendar, timesheet, selectedState, employeeState, weekDays]);
+
   // Ensure entries are initialized
   useEffect(() => {
     if (Object.keys(entries).length === 0 && weekDays.length > 0) {
@@ -202,6 +346,15 @@ export default function Timesheets() {
       // Fetch existing timesheet (this now returns holidays even if timesheet doesn't exist)
       const timesheetData = await api.getTimesheet(weekStart, weekEnd);
 
+      console.log('📊 Timesheet Data:', {
+        hasEntries: !!timesheetData?.entries,
+        entriesCount: timesheetData?.entries?.length,
+        hasHolidayCalendar: !!timesheetData?.holidayCalendar,
+        holidayCalendarCount: timesheetData?.holidayCalendar?.length,
+        firstEntry: timesheetData?.entries?.[0],
+        firstHoliday: timesheetData?.holidayCalendar?.[0]
+      });
+
       // Map entries by date (including holidays)
       const entriesMap: Record<string, TimesheetEntry> = {};
       
@@ -222,30 +375,61 @@ export default function Timesheets() {
           entriesMap[workDate] = {
             ...entry,
             work_date: workDate,
+            is_holiday: entry.is_holiday || false, // Ensure this is set
           };
+          
+          console.log(`📅 Entry ${workDate}:`, { is_holiday: entry.is_holiday, description: entry.description });
         });
       }
       
       // Set holiday calendar and inject holidays into entries
-      const holidayMap: Record<string, any> = {};
+      // Normalize holidays from timesheetData
       if (timesheetData?.holidayCalendar && Array.isArray(timesheetData.holidayCalendar)) {
-        setHolidays(timesheetData.holidayCalendar);
-        timesheetData.holidayCalendar.forEach((h: any) => {
-          const holidayDate = String(h.date).split('T')[0]; // Ensure YYYY-MM-DD format
-          holidayMap[holidayDate] = h;
-        });
+        const normalizedHolidays = timesheetData.holidayCalendar.map((h: any) => ({
+          ...h,
+          date: normalizeDate(h.date)
+        })).filter((h: any) => h.date);
+        setHolidays(normalizedHolidays);
       }
+      
+      // Get all holidays for the current week from all sources
+      const getAllHolidaysForWeek = (): Record<string, any> => {
+        const holidayMap: Record<string, any> = {};
+        
+        // From timesheet holidayCalendar
+        if (timesheetData?.holidayCalendar && Array.isArray(timesheetData.holidayCalendar)) {
+          timesheetData.holidayCalendar.forEach((h: any) => {
+            const dateStr = normalizeDate(h.date);
+            if (dateStr) {
+              holidayMap[dateStr] = { ...h, date: dateStr, name: h.name || 'Holiday' };
+            }
+          });
+        }
+        
+        // Merge with existing holidays state (they should already be normalized)
+        holidays.forEach((h: any) => {
+          const dateStr = normalizeDate(h.date);
+          if (dateStr) {
+            holidayMap[dateStr] = { ...h, date: dateStr, name: h.name || 'Holiday' };
+          }
+        });
+        
+        return holidayMap;
+      };
+      
+      const allHolidays = getAllHolidaysForWeek();
       
       // Initialize all week days with entries (including holidays)
       weekDays.forEach((day) => {
         const dateStr = format(day, "yyyy-MM-dd");
-        // If holiday exists for this date, create/update holiday entry
-        if (holidayMap[dateStr]) {
+        
+        // If holiday exists for this date, mark it as holiday
+        if (allHolidays[dateStr]) {
           entriesMap[dateStr] = {
             ...(entriesMap[dateStr] || {}),
             work_date: dateStr,
-            hours: 0,
-            description: "Holiday",
+            hours: entriesMap[dateStr]?.hours || 0,
+            description: entriesMap[dateStr]?.description || "Holiday",
             is_holiday: true,
             project_id: null,
             project_type: null,
@@ -258,11 +442,13 @@ export default function Timesheets() {
             description: "",
             project_id: null,
             project_type: null,
+            is_holiday: false,
           };
         } else {
           // Ensure existing entries have project_id and project_type
           entriesMap[dateStr] = {
             ...entriesMap[dateStr],
+            is_holiday: entriesMap[dateStr].is_holiday || false,
             project_id: entriesMap[dateStr].project_id || null,
             project_type: entriesMap[dateStr].project_type || null,
           };
@@ -710,8 +896,21 @@ export default function Timesheets() {
                     const dateStr = format(day, "yyyy-MM-dd");
                     const entry = entries[dateStr] || { work_date: dateStr, hours: 0, description: "" };
                     const hasShift = shifts[dateStr];
-                    const isHoliday = entry.is_holiday || holidays.some(h => h.date === dateStr);
-                    const holidayName = holidays.find(h => h.date === dateStr)?.name;
+                    const isHoliday = isDateHoliday(dateStr);
+                    const holidayName = holidays.find(h => normalizeDate(h.date) === dateStr)?.name || 
+                                       (timesheet?.holidayCalendar?.find((h: any) => normalizeDate(h.date) === dateStr)?.name) ||
+                                       'Holiday';
+                    
+                    // Debug log for holiday detection
+                    if (isHoliday) {
+                      console.log(`🎉 HOLIDAY DETECTED for ${dateStr}:`, {
+                        entry_is_holiday: entry.is_holiday,
+                        holidays_match: holidays.some(h => normalizeDate(h.date) === dateStr),
+                        timesheet_calendar_match: timesheet?.holidayCalendar?.some((h: any) => normalizeDate(h.date) === dateStr),
+                        holidayName
+                      });
+                    }
+                    
                     return (
                       <td
                         key={dateStr}
@@ -751,8 +950,10 @@ export default function Timesheets() {
                   {weekDays.map((day) => {
                     const dateStr = format(day, "yyyy-MM-dd");
                     const entry = entries[dateStr] || { work_date: dateStr, hours: 0, description: "", project_id: null, project_type: null };
-                    const isHoliday = entry.is_holiday || holidays.some(h => h.date === dateStr);
-                    const holidayName = holidays.find(h => h.date === dateStr)?.name;
+                    const isHoliday = isDateHoliday(dateStr);
+                    const holidayName = holidays.find(h => normalizeDate(h.date) === dateStr)?.name || 
+                                       (timesheet?.holidayCalendar?.find((h: any) => normalizeDate(h.date) === dateStr)?.name) ||
+                                       'Holiday';
                     
                     // Determine current value for select
                     let currentValue = '';
@@ -859,6 +1060,19 @@ export default function Timesheets() {
               <Button onClick={handleReopen} variant="outline" size="sm">
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Reopen for Editing
+              </Button>
+            </div>
+          )}
+
+          {timesheet?.status === "approved" && (
+            <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-3">
+              <div>
+                <p className="font-semibold text-blue-900 dark:text-blue-200">Timesheet Approved</p>
+                <p className="text-sm mt-1 text-blue-800 dark:text-blue-300">This timesheet has been approved by your manager.</p>
+              </div>
+              <Button onClick={handleReopen} variant="outline" size="sm">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Request to Edit
               </Button>
             </div>
           )}
