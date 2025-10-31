@@ -123,6 +123,47 @@ createPool().then(async () => {
 
     CREATE INDEX IF NOT EXISTS idx_payments_org ON payments(organization_id);
     CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at);
+    
+    -- Workflow execution tables
+    CREATE TABLE IF NOT EXISTS workflow_instances (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      workflow_id UUID,
+      tenant_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+      name TEXT,
+      status TEXT NOT NULL DEFAULT 'running', -- running | completed | rejected | error
+      current_node_ids TEXT[] DEFAULT '{}',
+      trigger_payload JSONB,
+      created_by UUID REFERENCES profiles(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_actions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      instance_id UUID REFERENCES workflow_instances(id) ON DELETE CASCADE,
+      tenant_id UUID,
+      node_id TEXT NOT NULL,
+      node_type TEXT NOT NULL,
+      label TEXT,
+      assignee_role TEXT, -- manager | hr | finance
+      assignee_user_id UUID, -- optional direct assignment later
+      status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
+      decision_reason TEXT,
+      decided_by UUID REFERENCES profiles(id),
+      decided_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workflow_actions_tenant_pending ON workflow_actions(tenant_id) WHERE status = 'pending';
+
+    CREATE TABLE IF NOT EXISTS workflow_logs (
+      id BIGSERIAL PRIMARY KEY,
+      instance_id UUID REFERENCES workflow_instances(id) ON DELETE CASCADE,
+      level TEXT NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      data JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
   
   app.listen(PORT, () => {

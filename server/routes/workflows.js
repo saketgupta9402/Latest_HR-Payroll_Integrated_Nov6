@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../db/pool.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { startInstance, decide, listPendingActions } from '../services/workflows.js';
 
 const router = express.Router();
 
@@ -152,6 +153,45 @@ router.post('/execute', authenticateToken, async (req, res) => {
     const approvals = steps.filter(s => s.type.startsWith('approval_')).map(s => ({ approverRole: s.props?.approverRole || s.type.replace('approval_','') , label: s.label }));
 
     res.json({ steps, approvals });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Trigger an execution instance
+router.post('/trigger', authenticateToken, async (req, res) => {
+  try {
+    const { workflow, name, payload } = req.body || {};
+    if (!workflow) return res.status(400).json({ error: 'workflow required' });
+    const tenantRes = await query('SELECT tenant_id FROM profiles WHERE id=$1', [req.user.id]);
+    const tenantId = tenantRes.rows[0]?.tenant_id || null;
+    const id = await startInstance({ tenantId, userId: req.user.id, workflow, name, triggerPayload: payload });
+    res.json({ instanceId: id });
+  } catch (e) {
+    console.error('Trigger workflow error', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Pending actions for current user
+router.get('/actions/pending', authenticateToken, async (req, res) => {
+  try {
+    const actions = await listPendingActions({ userId: req.user.id });
+    res.json({ actions });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Decide an action (approve/reject)
+router.post('/actions/:id/decision', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision: d, reason, workflow } = req.body || {};
+    if (!['approve','reject'].includes(d)) return res.status(400).json({ error: 'decision must be approve|reject' });
+    if (!workflow) return res.status(400).json({ error: 'workflow json required to proceed' });
+    await decide({ actionId: id, decision: d, reason, userId: req.user.id, workflow });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

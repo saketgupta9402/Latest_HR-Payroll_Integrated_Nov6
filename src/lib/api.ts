@@ -304,6 +304,22 @@ class ApiClient {
   async getLeaveBalance() {
     return this.request('/api/stats/leave-balance');
   }
+
+  // Workflow runtime
+  async triggerWorkflow(data: { name?: string; workflow: any; payload?: any }) {
+    return this.request('/api/workflows/trigger', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getPendingWorkflowActions() {
+    return this.request('/api/workflows/actions/pending');
+  }
+
+  async decideWorkflowAction(actionId: string, decision: 'approve' | 'reject', reason?: string, workflow?: any) {
+    return this.request(`/api/workflows/actions/${actionId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, reason, workflow })
+    });
+  }
 }
 
 export const api = new ApiClient(API_URL);
