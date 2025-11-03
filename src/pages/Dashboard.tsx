@@ -50,23 +50,31 @@ export default function Dashboard() {
           const weekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
           const timesheet = await api.getTimesheet(weekStart, weekEnd);
           
-          if (timesheet.entries && Array.isArray(timesheet.entries)) {
-            timesheetHours = timesheet.entries.reduce((total: number, entry: any) => {
-              return total + (parseFloat(entry.hours || 0));
-            }, 0);
+          // Use total_hours from timesheet if available, otherwise calculate from entries
+          if (timesheet.total_hours !== undefined && timesheet.total_hours !== null) {
+            timesheetHours = parseFloat(timesheet.total_hours) || 0;
+          } else if (timesheet.entries && Array.isArray(timesheet.entries)) {
+            // Calculate from entries, excluding holiday entries
+            timesheetHours = timesheet.entries
+              .filter((entry: any) => !entry.is_holiday)
+              .reduce((total: number, entry: any) => {
+                return total + (parseFloat(entry.hours || 0));
+              }, 0);
           }
         }
       } catch (error) {
         console.error('Error fetching timesheet:', error);
       }
 
-      // Get leave balance
+      // Get leave balance (for all roles that have employee records)
       let leaveBalance = 0;
-      if (userRole && ['employee', 'manager'].includes(userRole)) {
-        try {
-          const balance = await api.getLeaveBalance();
-          leaveBalance = balance.leaveBalance || 0;
-        } catch (error) {
+      try {
+        const balance = await api.getLeaveBalance();
+        leaveBalance = balance.leaveBalance || 0;
+      } catch (error: any) {
+        // Only log error if it's not a 404 or permission issue
+        const errorMsg = error?.message || String(error);
+        if (!errorMsg.includes('not found') && !errorMsg.includes('permission')) {
           console.error('Error fetching leave balance:', error);
         }
       }
