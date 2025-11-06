@@ -1,0 +1,3 @@
+[submodule "payroll-app"]
+	url = https://github.com/saketgupta9402/payroll.git
+	path = payroll-app
