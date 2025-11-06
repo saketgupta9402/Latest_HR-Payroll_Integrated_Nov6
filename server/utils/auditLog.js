@@ -229,6 +229,60 @@ export async function getAuditLogs(filters = {}) {
 }
 
 /**
+ * Log payroll-specific audit event to payroll.audit_logs table
+ * 
+ * @param {Object} params
+ * @param {string} params.actorId - User ID of the actor
+ * @param {string} params.tenantId - Tenant ID
+ * @param {string} params.action - Payroll action (e.g., 'payroll_salary_viewed')
+ * @param {string} params.entityType - Type of entity (e.g., 'employee', 'payroll_cycle')
+ * @param {string} [params.entityId] - ID of the entity
+ * @param {Object} [params.details] - Additional details
+ * @param {string} [params.ipAddress] - IP address of the request
+ * @returns {Promise<Object>} Created audit log entry
+ */
+export async function auditPayroll({
+  actorId,
+  tenantId,
+  action,
+  entityType,
+  entityId = null,
+  details = {},
+  ipAddress = null,
+}) {
+  try {
+    // Insert into payroll.audit_logs table
+    const result = await query(
+      `INSERT INTO payroll.audit_logs (
+        tenant_id,
+        user_id,
+        action,
+        entity_type,
+        entity_id,
+        details,
+        ip_address
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *`,
+      [
+        tenantId,
+        actorId,
+        action,
+        entityType,
+        entityId,
+        JSON.stringify(details),
+        ipAddress,
+      ]
+    );
+
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error creating payroll audit log:', error);
+    // Don't throw - audit logging should not break the main flow
+    return null;
+  }
+}
+
+/**
  * Get high-risk audit logs (for CEO dashboard)
  * 
  * @param {string} tenantId - Tenant ID
@@ -247,6 +301,12 @@ export async function getHighRiskAuditLogs(tenantId, limit = 50) {
     'holiday_edit',
     'role_change',
     'compensation_change',
+    // Payroll-specific audit events
+    'payroll_salary_viewed',
+    'payroll_aggregate_viewed',
+    'payroll_payslip_viewed',
+    'payroll_cycle_created',
+    'payroll_cycle_processed',
   ];
 
   return getAuditLogs({
