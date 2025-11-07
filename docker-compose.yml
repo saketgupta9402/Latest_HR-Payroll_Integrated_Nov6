@@ -94,23 +94,6 @@ services:
     profiles:
       - dev
 
-  # Payroll Application (Frontend only - backend consolidated into main API)
-  payroll-app:
-    build:
-      context: ./payroll-app
-      dockerfile: ../Dockerfile.dev
-    ports:
-      - "3002:8080"
-    volumes:
-      - ./payroll-app:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_URL=http://localhost:3001
-      - VITE_PAYROLL_BASE_URL=http://localhost:3002
-    depends_on:
-      - api
-    restart: unless-stopped
-
   # Frontend application (production build)
   app:
     build:

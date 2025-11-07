@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import { createPool, query as dbQuery } from './db/pool.js';
 import authRoutes from './routes/auth.js';
 import employeesRoutes from './routes/employees.js';
@@ -33,7 +34,6 @@ import importsRoutes from './routes/imports.js';
 import checkInOutRoutes from './routes/check-in-out.js';
 import opalMiniAppsRoutes from './routes/opal-mini-apps.js';
 import attendanceRoutes from './routes/attendance.js';
-import payrollRoutes from './routes/payroll.js';
 import backgroundChecksRoutes from './routes/background-checks.js';
 import terminationsRoutes from './routes/terminations.js';
 import documentsRoutes from './routes/documents.js';
@@ -42,6 +42,7 @@ import rehireRoutes from './routes/rehire.js';
 import policiesRoutes from './routes/policies.js';
 import usersRoutes from './routes/users.js';
 import payrollSsoRoutes from './routes/payroll-sso.js';
+import payrollAuthRoutes from './routes/payroll-auth.js';
 import payrollServiceRoutes from './routes/payroll-service.js';
 import { setTenantContext } from './middleware/tenant.js';
 import { scheduleHolidayNotifications, scheduleNotificationRules } from './services/cron.js';
@@ -64,6 +65,7 @@ app.use(cors({
   ].filter(Boolean),
   credentials: true
 }));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -107,10 +109,9 @@ app.use('/api/migrations', migrationsRoutes);
 app.use('/api/check-in-out', checkInOutRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/opal-mini-apps', authenticateToken, setTenantContext, opalMiniAppsRoutes);
-// Consolidated Payroll Service (replaces separate payroll-api)
-app.use('/api/payroll', payrollServiceRoutes);
-// Legacy payroll routes (for backward compatibility - can be removed later)
-app.use('/api/payroll-legacy', authenticateToken, payrollRoutes);
+// Payroll services
+app.use('/api/payroll/auth', payrollAuthRoutes);
+app.use('/api/payroll', authenticateToken, payrollServiceRoutes);
 app.use('/api/background-checks', authenticateToken, backgroundChecksRoutes);
 app.use('/api/terminations', authenticateToken, terminationsRoutes);
 app.use('/api/documents', authenticateToken, documentsRoutes);

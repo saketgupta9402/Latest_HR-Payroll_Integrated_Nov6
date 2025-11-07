@@ -45,7 +45,6 @@ import MyProfile from "./pages/MyProfile";
 import ProjectCalendar from "./pages/ProjectCalendar";
 import HolidayManagement from "./pages/HolidayManagement";
 import EmployeeStats from "./pages/EmployeeStats";
-import Payroll from "./pages/Payroll";
 import BackgroundChecks from "./pages/BackgroundChecks";
 import Terminations from "./pages/Terminations";
 import DocumentInbox from "./pages/DocumentInbox";
@@ -56,6 +55,17 @@ import OffboardingPolicies from "./pages/OffboardingPolicies";
 import OnboardingEnhanced from "./pages/OnboardingEnhanced";
 import PoliciesManagement from "./pages/PoliciesManagement";
 import PromotionCycles from "./pages/PromotionCycles";
+import PayrollIndex from "./pages/payroll/Index";
+import PayrollAuth from "./pages/payroll/Auth";
+import PayrollDashboard from "./pages/payroll/Dashboard";
+import PayrollEmployees from "./pages/payroll/Employees";
+import PayrollCycles from "./pages/payroll/Payroll";
+import PayrollSettingsPage from "./pages/payroll/PayrollSettings";
+import PayrollReports from "./pages/payroll/Reports";
+import PayrollEmployeePortal from "./pages/payroll/EmployeePortal";
+import PayrollSSO from "./pages/payroll/SSO";
+import PayrollSetupPin from "./pages/payroll/SetupPin";
+import PayrollNotFound from "./pages/payroll/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -73,6 +83,11 @@ const App = () => (
             <Route path="/auth/first-time-login" element={<FirstTimeLogin />} />
             <Route path="/auth/first-login" element={<FirstLoginWithToken />} />
             <Route path="/setup-password" element={<SetupPassword />} />
+            <Route path="/payroll" element={<PublicRoute><PayrollIndex /></PublicRoute>} />
+            <Route path="/payroll/auth" element={<PublicRoute><PayrollAuth /></PublicRoute>} />
+            <Route path="/payroll/sso" element={<PayrollSSO />} />
+            <Route path="/payroll/setup-pin" element={<PayrollSetupPin />} />
+            <Route path="/sso" element={<PayrollSSO />} />
             
             {/* Protected routes */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -113,7 +128,12 @@ const App = () => (
             <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistantPage /></ProtectedRoute>} />
             <Route path="/attendance/upload" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo', 'admin', 'accountant']}><AttendanceUpload /></ProtectedRoute>} />
             <Route path="/attendance/history" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo', 'admin', 'accountant']}><AttendanceUploadHistory /></ProtectedRoute>} />
-            <Route path="/payroll" element={<ProtectedRoute allowedRoles={['accountant', 'ceo', 'admin']}><Payroll /></ProtectedRoute>} />
+            <Route path="/payroll/dashboard" element={<ProtectedRoute><PayrollDashboard /></ProtectedRoute>} />
+            <Route path="/payroll/employees" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo', 'admin', 'accountant']}><PayrollEmployees /></ProtectedRoute>} />
+            <Route path="/payroll/cycles" element={<ProtectedRoute allowedRoles={['accountant', 'hr', 'director', 'ceo', 'admin']}><PayrollCycles /></ProtectedRoute>} />
+            <Route path="/payroll/payroll-settings" element={<ProtectedRoute allowedRoles={['accountant', 'hr', 'director', 'ceo', 'admin']}><PayrollSettingsPage /></ProtectedRoute>} />
+            <Route path="/payroll/reports" element={<ProtectedRoute allowedRoles={['accountant', 'hr', 'director', 'ceo', 'admin']}><PayrollReports /></ProtectedRoute>} />
+            <Route path="/payroll/employee-portal" element={<ProtectedRoute><PayrollEmployeePortal /></ProtectedRoute>} />
             <Route path="/background-checks" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo', 'admin']}><BackgroundChecks /></ProtectedRoute>} />
             <Route path="/terminations" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo', 'admin']}><Terminations /></ProtectedRoute>} />
             <Route path="/documents" element={<ProtectedRoute><DocumentInbox /></ProtectedRoute>} />
@@ -126,6 +146,7 @@ const App = () => (
             <Route path="/onboarding/enhanced" element={<ProtectedRoute><OnboardingEnhanced /></ProtectedRoute>} />
             <Route path="/policies/management" element={<ProtectedRoute allowedRoles={['hr', 'director', 'ceo', 'admin']}><PoliciesManagement /></ProtectedRoute>} />
             <Route path="/promotion/cycles" element={<ProtectedRoute><PromotionCycles /></ProtectedRoute>} />
+            <Route path="/payroll/*" element={<PayrollNotFound />} />
             
             {/* Redirects */}
             <Route path="/" element={<Navigate to="/dashboard" />} />

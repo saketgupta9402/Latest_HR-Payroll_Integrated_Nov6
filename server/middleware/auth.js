@@ -1,9 +1,15 @@
 import jwt from 'jsonwebtoken';
 import { query, withClient } from '../db/pool.js';
 
+const TOKEN_COOKIE = 'session';
+
 export async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+
+  if (!token && req.cookies) {
+    token = req.cookies[TOKEN_COOKIE];
+  }
 
   if (!token) {
     return res.status(401).json({ error: 'No token provided', errors: [] });
@@ -11,29 +17,32 @@ export async function authenticateToken(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    req.user = decoded;
-    
-    // If JWT has org_id, use it; otherwise fetch from database
-    let orgId = decoded.org_id;
+    const userId = decoded.id || decoded.userId;
+
+    if (!userId) {
+      return res.status(403).json({ error: 'Invalid token payload', errors: [] });
+    }
+
+    req.user = { ...decoded, id: userId };
+
+    let orgId = decoded.org_id || decoded.orgId;
     if (!orgId) {
       const profileResult = await query(
         'SELECT tenant_id FROM profiles WHERE id = $1',
-        [decoded.id]
+        [userId]
       );
       orgId = profileResult.rows[0]?.tenant_id;
     }
-    
-    // Set org_id in request for use by other middleware and RLS
+
     req.orgId = orgId;
-    
-    // Set PostgreSQL session context for RLS (will be used by withClient wrapper)
+
     if (orgId) {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(orgId)) {
-        orgId = null;
+        req.orgId = null;
       }
     }
-    
+
     next();
   } catch (err) {
     return res.status(403).json({ error: 'Invalid or expired token', errors: [] });

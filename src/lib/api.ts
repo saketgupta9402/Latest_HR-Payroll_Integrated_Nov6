@@ -953,6 +953,192 @@ class ApiClient {
   async getPayrollSso() {
     return this.request('/api/payroll/sso');
   }
+
+  public auth = {
+    loginWithPin: async (email: string, pin: string) => {
+      const result = await this.request('/api/payroll/auth/login-pin', {
+        method: 'POST',
+        body: JSON.stringify({ email, pin }),
+      });
+      if (result.token) {
+        this.setToken(result.token);
+      }
+      return result;
+    },
+    setupPin: async (email: string, pin: string) => {
+      const result = await this.request('/api/payroll/auth/setup-pin', {
+        method: 'POST',
+        body: JSON.stringify({ email, pin }),
+      });
+      if (result.token) {
+        this.setToken(result.token);
+      }
+      return result;
+    },
+    logout: async () => {
+      await this.request('/api/payroll/auth/logout', { method: 'POST' });
+      this.setToken(null);
+    },
+    session: () => this.request('/api/payroll/auth/session'),
+    checkPinStatus: (email: string) => this.request(`/api/payroll/auth/pin-status?email=${encodeURIComponent(email)}`),
+  };
+
+  public me = {
+    profile: () => this.request('/api/payroll/profile'),
+    employee: () => this.request('/api/payroll/employees/me'),
+    compensation: () => this.request('/api/payroll/employees/me/compensation'),
+  };
+
+  public dashboard = {
+    tenant: () => this.request('/api/payroll/tenant'),
+    stats: () => this.request('/api/payroll/stats'),
+    cycles: () => this.request('/api/payroll/payroll-cycles'),
+  };
+
+  public employees = {
+    list: (searchTerm?: string) => {
+      const query = searchTerm ? `?q=${encodeURIComponent(searchTerm)}` : '';
+      return this.request(`/api/payroll/employees${query}`);
+    },
+    create: (data: any) => this.request('/api/payroll/employees', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    getCompensation: (employeeId: string) => this.request(`/api/payroll/employees/${employeeId}/compensation`),
+    createCompensation: (employeeId: string, data: any) => this.request(`/api/payroll/employees/${employeeId}/compensation`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    updateStatus: (employeeId: string, status: string) => this.request(`/api/payroll/employees/${employeeId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  };
+
+  public payroll = {
+    getNewCycleData: () => this.request('/api/payroll/payroll/new-cycle-data'),
+    createCycle: (data: any) => this.request('/api/payroll/payroll-cycles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    previewCycle: (cycleId: string) => this.request(`/api/payroll/payroll-cycles/${cycleId}/preview`),
+    processCycle: (cycleId: string, payrollItems: any[]) => this.request(`/api/payroll/payroll-cycles/${cycleId}/process`, {
+      method: 'POST',
+      body: JSON.stringify({ payrollItems }),
+    }),
+    getCyclePayslips: (cycleId: string) => this.request(`/api/payroll/payroll-cycles/${cycleId}/payslips`),
+    submitCycle: (cycleId: string) => this.request(`/api/payroll/payroll-cycles/${cycleId}/submit`, { method: 'POST' }),
+    approveCycle: (cycleId: string) => this.request(`/api/payroll/payroll-cycles/${cycleId}/approve`, { method: 'POST' }),
+    rejectCycle: (cycleId: string, reason?: string) => this.request(`/api/payroll/payroll-cycles/${cycleId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  };
+
+  public payslips = {
+    list: () => this.request('/api/payroll/payslips'),
+    downloadPDF: async (payslipId: string) => {
+      const headers: HeadersInit = {};
+      if (this.token) {
+        headers['Authorization'] = `Bearer ${this.token}`;
+      }
+      const response = await fetch(`${this.baseURL}/api/payroll/payslips/${payslipId}/pdf`, {
+        method: 'GET',
+        headers,
+      });
+      if (!response.ok) {
+        throw new Error('Failed to download payslip');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `payslip-${payslipId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    },
+  };
+
+  public payrollSettings = {
+    get: () => this.request('/api/payroll/payroll-settings'),
+    save: (data: any) => this.request('/api/payroll/payroll-settings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  };
+
+  public leaves = {
+    getMyLeaves: (params?: { status?: string; month?: number; year?: number }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.month) searchParams.set('month', params.month.toString());
+      if (params?.year) searchParams.set('year', params.year.toString());
+      const query = searchParams.toString();
+      const path = query ? `/api/payroll/leave-requests/me?${query}` : '/api/payroll/leave-requests/me';
+      return this.request(path);
+    },
+    createMyLeave: (data: any) => this.request('/api/payroll/leave-requests/me', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    getMyLeaveSummary: (month?: number, year?: number) => {
+      const searchParams = new URLSearchParams();
+      if (month) searchParams.set('month', month.toString());
+      if (year) searchParams.set('year', year.toString());
+      const query = searchParams.toString();
+      const path = query ? `/api/payroll/leave-summary/me?${query}` : '/api/payroll/leave-summary/me';
+      return this.request(path);
+    },
+  };
+
+  public attendance = {
+    getMyAttendance: (params?: { month?: number; year?: number; startDate?: string; endDate?: string }) => {
+      const searchParams = new URLSearchParams();
+      if (params?.month) searchParams.set('month', params.month.toString());
+      if (params?.year) searchParams.set('year', params.year.toString());
+      if (params?.startDate) searchParams.set('startDate', params.startDate);
+      if (params?.endDate) searchParams.set('endDate', params.endDate);
+      const query = searchParams.toString();
+      const path = query ? `/api/payroll/attendance/me?${query}` : '/api/payroll/attendance/me';
+      return this.request(path);
+    },
+  };
+
+  public reports = {
+    getPayrollRegister: async (cycleId: string) => {
+      const headers: HeadersInit = {};
+      if (this.token) {
+        headers['Authorization'] = `Bearer ${this.token}`;
+      }
+      const response = await fetch(`${this.baseURL}/api/payroll/reports/payroll-register?cycleId=${encodeURIComponent(cycleId)}`, {
+        method: 'GET',
+        headers,
+      });
+      if (!response.ok) {
+        throw new Error('Failed to download report');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `payroll-register-${cycleId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    },
+  };
+
+  public tax = {
+    getDeclarations: () => this.request('/api/payroll/tax-declarations'),
+    createDeclaration: (data: any) => this.request('/api/payroll/tax-declarations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    getDocuments: () => this.request('/api/payroll/tax-documents'),
+  };
 }
 
 export const api = new ApiClient(API_URL);

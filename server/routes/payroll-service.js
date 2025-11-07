@@ -9,14 +9,16 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/pool.js';
-import { authenticateToken } from '../middleware/auth.js';
 import { requireCapability, CAPABILITIES, hasCapability } from '../policy/authorize.js';
 import { audit, auditPayroll } from '../utils/auditLog.js';
 import { maskEmployeeData, maskEmployeeList } from '../utils/dataMasking.js';
+import { verifyHrSsoToken } from '../middleware/payroll-sso.js';
+import { upsertPayrollUser } from '../services/payroll-user-service.js';
 import PDFDocument from 'pdfkit';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
+const TOKEN_COOKIE = 'session';
 
 // Helper function to get user tenant and email
 async function getUserTenant(userId) {
@@ -48,16 +50,16 @@ async function calculateLopAndPaidDays(tenantId, employeeId, month, year) {
   const leaveResult = await query(
     `SELECT 
       COALESCE(SUM(CASE WHEN leave_type = 'loss_of_pay' THEN days ELSE 0 END), 0)::text as lop_days
-    FROM leave_requests
+    FROM payroll.leave_requests
     WHERE tenant_id = $1 
       AND employee_id = $2
       AND status = 'approved'
       AND (
         (EXTRACT(YEAR FROM start_date) = $3 AND EXTRACT(MONTH FROM start_date) = $4) OR
         (EXTRACT(YEAR FROM end_date) = $3 AND EXTRACT(MONTH FROM end_date) = $4) OR
-        (start_date <= DATE '${year}-${month}-01' AND end_date >= DATE '${year}-${month}-01')
+        (start_date <= $5::date AND end_date >= $5::date)
       )`,
-    [tenantId, employeeId, year, month]
+    [tenantId, employeeId, year, month, `${year}-${String(month).padStart(2, '0')}-01`]
   );
 
   // Get LOP days from attendance records (if using payroll schema)
@@ -84,19 +86,17 @@ async function calculateLopAndPaidDays(tenantId, employeeId, month, year) {
 // Middleware to extract tenant and user info
 async function requireAuthWithTenant(req, res, next) {
   try {
-    const token = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
-    if (!token) {
+    const userId = req.user?.id || req.userId;
+    if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.userId = payload.userId || payload.id;
-    
-    const profile = await getUserTenant(req.userId);
+    const profile = await getUserTenant(userId);
     if (!profile.tenant_id) {
       return res.status(403).json({ error: 'User is not associated with a tenant' });
     }
-    
+
+    req.userId = userId;
     req.tenantId = profile.tenant_id;
     req.userEmail = profile.email;
     next();
@@ -105,6 +105,114 @@ async function requireAuthWithTenant(req, res, next) {
     return res.status(401).json({ error: e.message || 'Unauthorized' });
   }
 }
+
+async function getPayrollEmployeeId(tenantId, email) {
+  const result = await query(
+    'SELECT id FROM payroll.employees WHERE tenant_id = $1 AND email = $2 LIMIT 1',
+    [tenantId, email.toLowerCase().trim()]
+  );
+  return result.rows[0]?.id || null;
+}
+
+// ============================================================================
+// SSO FROM HR PORTAL
+// ============================================================================
+
+router.get('/sso', verifyHrSsoToken, async (req, res) => {
+  try {
+    const hrUser = req.hrUser;
+    if (!hrUser) {
+      return res.status(401).json({
+        error: 'SSO user not found',
+        message: 'Failed to extract user from SSO token',
+      });
+    }
+
+    let user;
+    try {
+      user = await upsertPayrollUser(hrUser);
+    } catch (error) {
+      console.error('Error upserting Payroll user:', error);
+      return res.status(500).json({
+        error: 'Failed to provision user',
+        message: error.message || 'Internal server error during user provisioning',
+      });
+    }
+
+    const pinCheck = await query(
+      'SELECT pin_hash FROM users WHERE id = $1',
+      [user.id]
+    );
+
+    const hasPin = !!pinCheck.rows[0]?.pin_hash;
+
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    res.cookie(TOKEN_COOKIE, token, { httpOnly: true, sameSite: 'lax' });
+
+    await auditPayroll({
+      actorId: user.id,
+      tenantId: user.org_id,
+      action: 'payroll_salary_viewed',
+      entityType: 'sso',
+      entityId: user.id,
+      details: { hrUser: hrUser.email, payrollRole: user.payroll_role },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    if (!hasPin) {
+      return res.json({
+        success: true,
+        requiresPinSetup: true,
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          payrollRole: user.payroll_role,
+        },
+        redirect: `/payroll/setup-pin?email=${encodeURIComponent(user.email)}`,
+      });
+    }
+
+    const destination = hrUser.payrollRole === 'payroll_admin'
+      ? '/payroll/dashboard'
+      : '/payroll/employee-portal';
+
+    res.json({
+      success: true,
+      requiresPinSetup: false,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        payrollRole: user.payroll_role,
+      },
+      redirect: destination,
+    });
+  } catch (error) {
+    console.error('SSO error:', error);
+    res.status(500).json({
+      error: 'SSO processing failed',
+      message: error.message || 'Internal server error during SSO processing',
+    });
+  }
+});
+
+router.get('/sso/verify', verifyHrSsoToken, (req, res) => {
+  const hrUser = req.hrUser;
+
+  res.json({
+    success: true,
+    message: 'SSO token is valid',
+    user: {
+      hrUserId: hrUser.hrUserId,
+      orgId: hrUser.orgId,
+      email: hrUser.email,
+      name: hrUser.name,
+      roles: hrUser.roles,
+      payrollRole: hrUser.payrollRole,
+    },
+  });
+});
 
 // ============================================================================
 // PROFILE & TENANT ROUTES
@@ -386,6 +494,263 @@ router.get('/payslips', requireAuthWithTenant, async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch payslips' });
   }
 });
+
+// ============================================================================
+// LEAVE & ATTENDANCE SELF-SERVICE
+// ============================================================================
+
+router.get(
+  '/leave-requests/me',
+  requireAuthWithTenant,
+  requireCapability(CAPABILITIES.LEAVE_REQUEST_OWN),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId;
+      const email = req.userEmail;
+      const status = req.query.status ? req.query.status.toString() : undefined;
+      const month = req.query.month ? parseInt(req.query.month.toString(), 10) : undefined;
+      const year = req.query.year ? parseInt(req.query.year.toString(), 10) : undefined;
+
+      const employeeId = await getPayrollEmployeeId(tenantId, email);
+      if (!employeeId) {
+        return res.json({ leaveRequests: [] });
+      }
+
+      let sql = `
+        SELECT 
+          lr.*,
+          e.full_name AS employee_name,
+          e.employee_code,
+          approver.full_name AS approver_name,
+          creator.full_name AS creator_name
+        FROM payroll.leave_requests lr
+        JOIN payroll.employees e ON lr.employee_id = e.id
+        LEFT JOIN profiles approver ON lr.approved_by = approver.id OR lr.rejected_by = approver.id
+        LEFT JOIN profiles creator ON lr.created_by = creator.id
+        WHERE lr.tenant_id = $1 AND lr.employee_id = $2
+      `;
+      const params = [tenantId, employeeId];
+      let paramIndex = 3;
+
+      if (status) {
+        sql += ` AND lr.status = $${paramIndex}`;
+        params.push(status);
+        paramIndex += 1;
+      }
+
+      if (month && year) {
+        const startOfMonth = new Date(year, month - 1, 1).toISOString().slice(0, 10);
+        const endOfMonth = new Date(year, month, 0).toISOString().slice(0, 10);
+        sql += ` AND (
+          (lr.start_date BETWEEN $${paramIndex} AND $${paramIndex + 1}) OR
+          (lr.end_date BETWEEN $${paramIndex} AND $${paramIndex + 1}) OR
+          (lr.start_date <= $${paramIndex} AND lr.end_date >= $${paramIndex + 1})
+        )`;
+        params.push(startOfMonth, endOfMonth);
+        paramIndex += 2;
+      }
+
+      sql += ' ORDER BY lr.created_at DESC';
+
+      const result = await query(sql, params);
+      return res.json({ leaveRequests: result.rows });
+    } catch (error) {
+      console.error('Error fetching leave requests:', error);
+      return res.status(500).json({ error: 'Failed to fetch leave requests' });
+    }
+  }
+);
+
+router.post(
+  '/leave-requests/me',
+  requireAuthWithTenant,
+  requireCapability(CAPABILITIES.LEAVE_REQUEST_OWN),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId;
+      const email = req.userEmail;
+      const { leaveType, startDate, endDate, reason } = req.body || {};
+
+      if (!leaveType || !startDate || !endDate) {
+        return res.status(400).json({ error: 'leaveType, startDate, and endDate are required' });
+      }
+
+      const employeeId = await getPayrollEmployeeId(tenantId, email);
+      if (!employeeId) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+        return res.status(400).json({ error: 'Invalid leave date range' });
+      }
+
+      const millisecondsPerDay = 1000 * 60 * 60 * 24;
+      const days = ((end.getTime() - start.getTime()) / millisecondsPerDay) + 1;
+
+      const insertResult = await query(
+        `INSERT INTO payroll.leave_requests (
+          tenant_id,
+          employee_id,
+          leave_type,
+          start_date,
+          end_date,
+          days,
+          reason,
+          status,
+          created_by
+        ) VALUES (
+          $1,
+          $2,
+          $3::public.leave_type,
+          $4,
+          $5,
+          $6,
+          $7,
+          'pending',
+          $8
+        )
+        RETURNING *`,
+        [tenantId, employeeId, leaveType, startDate, endDate, days, reason || null, req.userId]
+      );
+
+      const leaveRequest = insertResult.rows[0];
+      return res.status(201).json({ leaveRequest });
+    } catch (error) {
+      console.error('Error creating leave request:', error);
+      return res.status(500).json({ error: 'Failed to create leave request' });
+    }
+  }
+);
+
+router.get(
+  '/leave-summary/me',
+  requireAuthWithTenant,
+  requireCapability(CAPABILITIES.LEAVE_REQUEST_OWN),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId;
+      const email = req.userEmail;
+      const requestedMonth = req.query.month ? parseInt(req.query.month.toString(), 10) : undefined;
+      const requestedYear = req.query.year ? parseInt(req.query.year.toString(), 10) : undefined;
+
+      const now = new Date();
+      const month = requestedMonth || now.getMonth() + 1;
+      const year = requestedYear || now.getFullYear();
+
+      const employeeId = await getPayrollEmployeeId(tenantId, email);
+      if (!employeeId) {
+        return res.json({
+          month,
+          year,
+          totalWorkingDays: 0,
+          lopDays: 0,
+          paidDays: 0,
+          paidLeaveDays: 0,
+          totalLeaveDays: 0,
+        });
+      }
+
+      const firstDay = new Date(year, month - 1, 1);
+      const lastDay = new Date(year, month, 0);
+      const totalWorkingDays = lastDay.getDate();
+
+      const leaveData = await query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN status = 'approved' AND leave_type != 'loss_of_pay' THEN days ELSE 0 END), 0)::numeric AS paid_leave_days,
+           COALESCE(SUM(CASE WHEN status = 'approved' AND leave_type = 'loss_of_pay' THEN days ELSE 0 END), 0)::numeric AS lop_leave_days,
+           COALESCE(SUM(CASE WHEN status = 'approved' THEN days ELSE 0 END), 0)::numeric AS total_leave_days
+         FROM payroll.leave_requests
+         WHERE tenant_id = $1
+           AND employee_id = $2
+           AND start_date <= $3
+           AND end_date >= $4`,
+        [tenantId, employeeId, lastDay.toISOString().slice(0, 10), firstDay.toISOString().slice(0, 10)]
+      );
+
+      const attendanceData = await query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN is_lop THEN 1 ELSE 0 END), 0)::numeric AS lop_days
+         FROM payroll.attendance_records
+         WHERE tenant_id = $1
+           AND employee_id = $2
+           AND attendance_date BETWEEN $3 AND $4`,
+        [tenantId, employeeId, firstDay.toISOString().slice(0, 10), lastDay.toISOString().slice(0, 10)]
+      );
+
+      const lopDays = Number(leaveData.rows[0]?.lop_leave_days || 0) + Number(attendanceData.rows[0]?.lop_days || 0);
+      const paidLeaveDays = Number(leaveData.rows[0]?.paid_leave_days || 0);
+      const totalLeaveDays = Number(leaveData.rows[0]?.total_leave_days || 0);
+      const paidDays = Math.max(0, totalWorkingDays - lopDays);
+
+      return res.json({
+        month,
+        year,
+        totalWorkingDays,
+        lopDays,
+        paidDays,
+        paidLeaveDays,
+        totalLeaveDays,
+      });
+    } catch (error) {
+      console.error('Error fetching leave summary:', error);
+      return res.status(500).json({ error: 'Failed to fetch leave summary' });
+    }
+  }
+);
+
+router.get(
+  '/attendance/me',
+  requireAuthWithTenant,
+  requireCapability(CAPABILITIES.LEAVE_REQUEST_OWN),
+  async (req, res) => {
+    try {
+      const tenantId = req.tenantId;
+      const email = req.userEmail;
+      const employeeId = await getPayrollEmployeeId(tenantId, email);
+
+      if (!employeeId) {
+        return res.json({ attendanceRecords: [] });
+      }
+
+      const month = req.query.month ? parseInt(req.query.month.toString(), 10) : undefined;
+      const year = req.query.year ? parseInt(req.query.year.toString(), 10) : undefined;
+      const startDate = req.query.startDate ? req.query.startDate.toString() : undefined;
+      const endDate = req.query.endDate ? req.query.endDate.toString() : undefined;
+
+      let sql = `
+        SELECT 
+          ar.*,
+          e.full_name AS employee_name,
+          e.employee_code
+        FROM payroll.attendance_records ar
+        JOIN payroll.employees e ON ar.employee_id = e.id
+        WHERE ar.tenant_id = $1 AND ar.employee_id = $2
+      `;
+      const params = [tenantId, employeeId];
+      let paramIndex = 3;
+
+      if (month && year) {
+        sql += ` AND EXTRACT(YEAR FROM ar.attendance_date) = $${paramIndex} AND EXTRACT(MONTH FROM ar.attendance_date) = $${paramIndex + 1}`;
+        params.push(year, month);
+        paramIndex += 2;
+      } else if (startDate && endDate) {
+        sql += ` AND ar.attendance_date >= $${paramIndex} AND ar.attendance_date <= $${paramIndex + 1}`;
+        params.push(startDate, endDate);
+        paramIndex += 2;
+      }
+
+      sql += ' ORDER BY ar.attendance_date DESC';
+
+      const result = await query(sql, params);
+      return res.json({ attendanceRecords: result.rows });
+    } catch (error) {
+      console.error('Error fetching attendance records:', error);
+      return res.status(500).json({ error: 'Failed to fetch attendance records' });
+    }
+  }
+);
 
 // ============================================================================
 // HR-ONLY ROUTES (Sensitive Payroll Data)
